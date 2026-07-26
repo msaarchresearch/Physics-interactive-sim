@@ -660,7 +660,25 @@ function drawPendulum(p){
   if(world.showF){
     const s=vscale.force;
     const w=p.weight(), T=p.tension();
-    parallelogram(bob,{x:w.x*s,y:w.y*s},{x:T.x*s,y:T.y*s},CSS.force,null);
+    
+    // 1. Get tangential and radial unit vectors
+    const tHat = p.tHat(), rHat = p.rHat();
+    
+    // 2. Project the weight vector onto these axes
+    const wtMag = w.x*tHat.x + w.y*tHat.y;
+    const wrMag = w.x*rHat.x + w.y*rHat.y;
+    
+    const w_t = {x: tHat.x * wtMag, y: tHat.y * wtMag}; // Tangential (swing) component
+    const w_r = {x: rHat.x * wrMag, y: rHat.y * wrMag}; // Radial (tension-opposing) component
+
+    // 3. Draw weight as a parallelogram of its two components
+    // This will draw the components as dashed lines and the main weight as a solid line
+    parallelogram(bob, {x:w_t.x*s, y:w_t.y*s}, {x:w_r.x*s, y:w_r.y*s}, CSS.force, null);
+    
+    // 4. Draw the tension vector acting back up the thread
+    arrow(bob, T.x*s, T.y*s, CSS.force, {width: 2.6});
+
+    // 5. Draw damping force if active
     if(world.damp>0){
       const d=p.dampForce();
       arrow(bob,d.x*s,d.y*s,CSS.force,{dashed:true,width:1.6});
