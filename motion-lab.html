@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Motion Lab &middot; Interactive rigid-body physics sandbox</title>
+<meta name="description" content="Spawn geometry, launch it under adjustable gravity, friction and drag, and watch displacement, velocity and acceleration plot in real time.">
+<style>
+/* ==================================================================
+   TOKENS
+   ================================================================== */
+:root{
+  --ground:#15171C; --panel:#1B1F26; --panel-2:#20252E;
+  --edge:#2B313B; --edge-lit:#3C4553;
+  --text:#E9ECF0; --dim:#949CA8; --faint:#5C6470;
+  --accent:#F0A202; --accent-dim:#8A5F04;
+  --x:#3B82F6; --y:#EF4444;
+  --stage:#0F1116; --stage-grid:#1D222B;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--ground);color:var(--text);
+  font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+
+/* ==================================================================
+   LAYOUT
+   ================================================================== */
+#app{display:grid;grid-template-columns:262px minmax(0,1fr) 310px;
+  grid-template-rows:100vh;gap:1px;background:var(--edge)}
+.col{background:var(--ground);overflow-y:auto;overflow-x:hidden}
+.col::-webkit-scrollbar{width:9px}
+.col::-webkit-scrollbar-thumb{background:var(--edge);border-radius:9px}
+.col::-webkit-scrollbar-track{background:transparent}
+
+/* ==================================================================
+   SIDEBAR CHROME
+   ================================================================== */
+.brand{padding:16px 16px 12px;border-bottom:1px solid var(--edge)}
+.brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.02em}
+.brand .sub{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-top:4px}
+
+.group{padding:14px 16px;border-bottom:1px solid var(--edge)}
+.group h2{margin:0 0 11px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);font-weight:500}
+
+/* ---- buttons ---- */
+.btn{font-family:var(--sans);font-size:12.5px;color:var(--dim);background:var(--panel);
+  border:1px solid var(--edge);border-radius:6px;padding:8px 10px;cursor:pointer;
+  transition:border-color .13s,color .13s,background .13s;width:100%}
+.btn:hover{border-color:var(--edge-lit);color:var(--text)}
+.btn:disabled{opacity:.38;cursor:not-allowed}
+.btn.on{background:var(--text);color:var(--ground);border-color:var(--text);font-weight:600}
+.btn.accent{background:var(--accent);color:#1A1205;border-color:var(--accent);font-weight:600}
+.btn.accent:hover{filter:brightness(1.08)}
+.btn.danger:hover{border-color:#7F2A22;color:#F0796B}
+.row{display:grid;gap:7px}
+.row.c2{grid-template-columns:1fr 1fr}
+.row.c3{grid-template-columns:1fr 1fr 1fr}
+.spawn{display:flex;flex-direction:column;align-items:center;gap:6px;padding:11px 4px}
+.spawn svg{width:26px;height:26px}
+
+/* ---- sliders ---- */
+.ctl{margin-bottom:13px}
+.ctl:last-child{margin-bottom:0}
+.ctl-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.ctl-top label{font-size:12px;color:var(--dim)}
+.val{font-family:var(--mono);font-size:11.5px;color:var(--text)}
+.val .u{color:var(--faint);font-size:9.5px;margin-left:2px}
+input[type=range]{width:100%;height:16px;accent-color:var(--accent);cursor:pointer;margin:0}
+select,input[type=number]{width:100%;background:var(--stage);color:var(--text);
+  border:1px solid var(--edge);border-radius:6px;padding:7px 8px;
+  font-family:var(--mono);font-size:12px}
+select:focus-visible,input:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pair{display:grid;grid-template-columns:1fr 1fr;gap:7px}
+.pair .fld label{display:block;font-size:10.5px;color:var(--faint);margin-bottom:4px}
+.hint{font-size:11px;line-height:1.5;color:var(--faint);margin:9px 0 0}
+
+/* ==================================================================
+   STAGE
+   ================================================================== */
+#stagecol{display:flex;flex-direction:column;overflow:hidden}
+#toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--edge);background:var(--ground);flex-wrap:wrap}
+#toolbar .btn{width:auto;padding:7px 13px}
+.spacer{flex:1}
+.chip{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  border:1px solid var(--edge);border-radius:999px;padding:4px 10px;white-space:nowrap}
+#stagewrap{flex:1;position:relative;min-height:0;background:var(--stage)}
+#stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#hud{position:absolute;left:12px;bottom:12px;pointer-events:none;
+  font-family:var(--mono);font-size:11px;line-height:1.65;color:var(--dim);
+  background:rgba(15,17,22,.82);border:1px solid var(--edge);border-radius:7px;padding:8px 11px}
+#hud b{color:var(--text);font-weight:500}
+#empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  pointer-events:none;color:var(--faint);font-size:13.5px;text-align:center;padding:24px;line-height:1.7}
+
+/* ==================================================================
+   CHARTS
+   ================================================================== */
+.chartbox{padding:12px 14px;border-bottom:1px solid var(--edge)}
+.chart-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.chart-head h3{margin:0;font-size:12.5px;font-weight:600;letter-spacing:-.01em}
+.legend{display:flex;gap:10px;font-family:var(--mono);font-size:10px;color:var(--dim)}
+.legend i{display:inline-block;width:9px;height:2.5px;border-radius:2px;
+  vertical-align:middle;margin-right:4px}
+.chart-c{position:relative;width:100%;height:132px}
+.chart-c canvas{position:absolute;inset:0;width:100%;height:100%}
+@media (max-width:1180px){
+  #app{grid-template-columns:236px minmax(0,1fr) 268px}
+}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ============================================================
+       LEFT — CONTROLS
+       ============================================================ -->
+  <aside class="col" id="left">
+    <div class="brand">
+      <h1>Motion Lab</h1>
+      <div class="sub">Rigid-body sandbox</div>
+    </div>
+
+    <!-- spawn -->
+    <div class="group">
+      <h2>Add geometry</h2>
+      <div class="row c3">
+        <button class="btn spawn" data-spawn="circle" title="Spawn a circle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+            <circle cx="12" cy="12" r="8"/></svg>Circle</button>
+        <button class="btn spawn" data-spawn="triangle" title="Spawn a triangle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+            stroke-linejoin="round"><path d="M12 4 20 19H4z"/></svg>Triangle</button>
+        <button class="btn spawn" data-spawn="rect" title="Spawn a rectangle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"
+            stroke-linejoin="round"><rect x="4" y="7" width="16" height="10" rx="1"/></svg>Rect</button>
+      </div>
+      <p class="hint" id="spawnhint">Pick a shape, then click the stage to place it.
+        Click any object to make it the active body.</p>
+    </div>
+
+    <!-- selected object -->
+    <div class="group">
+      <h2>Active object</h2>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-scale">Scale</label>
+          <span class="val" id="v-scale">1.00<span class="u">×</span></span></div>
+        <input type="range" id="s-scale" min="0.3" max="3" step="0.05" value="1" disabled>
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-dens">Density</label>
+          <span class="val" id="v-dens">1.0<span class="u">kg/m²</span></span></div>
+        <input type="range" id="s-dens" min="0.2" max="5" step="0.1" value="1" disabled>
+      </div>
+      <div class="row c2">
+        <button class="btn" id="b-clone" disabled>Duplicate</button>
+        <button class="btn danger" id="b-del" disabled>Delete</button>
+      </div>
+      <p class="hint">Everything except the active object behaves as an immovable obstacle.</p>
+    </div>
+
+    <!-- launch -->
+    <div class="group">
+      <h2>Launch &amp; motion</h2>
+      <div class="pair" style="margin-bottom:10px">
+        <div class="fld"><label for="i-speed">Speed (m/s)</label>
+          <input type="number" id="i-speed" value="12" min="0" max="80" step="0.5"></div>
+        <div class="fld"><label for="i-angle">Angle (deg)</label>
+          <input type="number" id="i-angle" value="55" min="-180" max="360" step="1"></div>
+      </div>
+      <div class="row c2" style="margin-bottom:10px">
+        <button class="btn accent" id="b-launch" disabled>Launch</button>
+        <button class="btn" id="b-drop" disabled>Drop</button>
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-thrust">Constant acceleration</label>
+          <span class="val" id="v-thrust">0.0<span class="u">m/s²</span></span></div>
+        <input type="range" id="s-thrust" min="0" max="30" step="0.5" value="0">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-thrustdir">Its direction</label>
+          <span class="val" id="v-thrustdir">0<span class="u">deg</span></span></div>
+        <input type="range" id="s-thrustdir" min="0" max="360" step="1" value="0">
+      </div>
+      <p class="hint">Constant acceleration acts like a thruster — it keeps pushing
+        while the body is in motion.</p>
+    </div>
+
+    <!-- environment -->
+    <div class="group">
+      <h2>Environment</h2>
+      <div class="ctl">
+        <label for="i-planet" style="display:block;font-size:12px;color:var(--dim);margin-bottom:5px">Gravity preset</label>
+        <select id="i-planet">
+          <option value="9.81" selected>Earth &mdash; 9.81</option>
+          <option value="1.62">Moon &mdash; 1.62</option>
+          <option value="3.72">Mars &mdash; 3.72</option>
+          <option value="24.79">Jupiter &mdash; 24.79</option>
+          <option value="8.87">Venus &mdash; 8.87</option>
+          <option value="3.70">Mercury &mdash; 3.70</option>
+          <option value="10.44">Saturn &mdash; 10.44</option>
+          <option value="1.35">Titan &mdash; 1.35</option>
+          <option value="1.31">Europa &mdash; 1.31</option>
+          <option value="0.62">Pluto &mdash; 0.62</option>
+          <option value="0">Zero-G &mdash; 0.00</option>
+        </select>
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-grav">Gravity g</label>
+          <span class="val" id="v-grav">9.81<span class="u">m/s²</span></span></div>
+        <input type="range" id="s-grav" min="0" max="30" step="0.01" value="9.81">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-rest">Restitution e</label>
+          <span class="val" id="v-rest">0.60</span></div>
+        <input type="range" id="s-rest" min="0" max="1" step="0.01" value="0.6">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-fric">Surface friction μ</label>
+          <span class="val" id="v-fric">0.25</span></div>
+        <input type="range" id="s-fric" min="0" max="1" step="0.01" value="0.25">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="s-drag">Air resistance</label>
+          <span class="val" id="v-drag">0.10</span></div>
+        <input type="range" id="s-drag" min="0" max="1" step="0.01" value="0.1">
+      </div>
+      <p class="hint">e = 1 is a perfectly elastic bounce, e = 0 is fully inelastic.
+        Drifting dots show air density.</p>
+    </div>
+
+    <!-- view -->
+    <div class="group">
+      <h2>View</h2>
+      <div class="row c2">
+        <button class="btn on" id="b-trail">Trail</button>
+        <button class="btn on" id="b-vec">Vectors</button>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ============================================================
+       CENTER — STAGE
+       ============================================================ -->
+  <section id="stagecol">
+    <div id="toolbar">
+      <button class="btn accent" id="b-play">Pause</button>
+      <button class="btn" id="b-reset">Reset</button>
+      <button class="btn" id="b-clear">Clear all</button>
+      <div class="spacer"></div>
+      <span class="chip" id="chip-scale">1 m = 40 px</span>
+      <span class="chip" id="chip-count">0 objects</span>
+      <span class="chip" id="chip-time">t = 0.00 s</span>
+    </div>
+    <div id="stagewrap">
+      <canvas id="stage"></canvas>
+      <div id="empty">Choose a shape on the left, then click here to place it.</div>
+      <div id="hud" hidden></div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       RIGHT — ANALYTICS
+       ============================================================ -->
+  <aside class="col" id="right">
+    <div class="brand">
+      <h1>Analytics</h1>
+      <div class="sub">Active body &middot; live</div>
+    </div>
+
+    <div class="chartbox">
+      <div class="chart-head"><h3>Displacement</h3>
+        <div class="legend"><span><i style="background:var(--x)"></i>x</span>
+          <span><i style="background:var(--y)"></i>y</span></div></div>
+      <div class="chart-c"><canvas id="c-pos"></canvas></div>
+    </div>
+
+    <div class="chartbox">
+      <div class="chart-head"><h3>Velocity</h3>
+        <div class="legend"><span><i style="background:var(--x)"></i>v<sub>x</sub></span>
+          <span><i style="background:var(--y)"></i>v<sub>y</sub></span></div></div>
+      <div class="chart-c"><canvas id="c-vel"></canvas></div>
+    </div>
+
+    <div class="chartbox">
+      <div class="chart-head"><h3>Acceleration</h3>
+        <div class="legend"><span><i style="background:var(--x)"></i>a<sub>x</sub></span>
+          <span><i style="background:var(--y)"></i>a<sub>y</sub></span></div></div>
+      <div class="chart-c"><canvas id="c-acc"></canvas></div>
+    </div>
+
+    <div class="group" style="border-bottom:none">
+      <h2>Readout</h2>
+      <div id="readout" style="font-family:var(--mono);font-size:11.5px;line-height:1.9;color:var(--dim)">
+        No active body.
+      </div>
+    </div>
+  </aside>
+</div>
+
+<script>
+"use strict";
+/* ==================================================================
+   MOTION LAB — vanilla HTML5 canvas rigid-body sandbox
+   ------------------------------------------------------------------
+   Coordinate system
+     Physics runs in SI units (metres, seconds) with the y-axis
+     pointing UP, origin at the bottom-left of the stage. Rendering
+     converts to screen pixels at the end:  sx = x*PPM,  sy = H - y*PPM
+     Keeping physics in y-up means gravity is simply a = (0, -g) and
+     the plotted graphs read the way a student expects.
+   ================================================================== */
+
+const PPM = 40;                 // pixels per metre
+const FIXED_DT = 1 / 240;       // physics timestep (s) — small and constant
+const MAX_STEPS = 8;            // guard against spiral-of-death after a stall
+const REST_VEL = 0.55;          // below this normal speed a bounce is killed
+const SLOP = 0.0015;            // allowed penetration before positional fix
+const HIST_SECONDS = 8;         // rolling window shown on the charts
+
+/* ---------- tiny vector helpers ---------- */
+const V = {
+  add:(a,b)=>({x:a.x+b.x, y:a.y+b.y}),
+  sub:(a,b)=>({x:a.x-b.x, y:a.y-b.y}),
+  mul:(a,s)=>({x:a.x*s,   y:a.y*s}),
+  dot:(a,b)=>a.x*b.x + a.y*b.y,
+  len:a=>Math.hypot(a.x,a.y),
+  norm(a){ const l=Math.hypot(a.x,a.y)||1; return {x:a.x/l, y:a.y/l}; }
+};
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const DEG=Math.PI/180;
+
+/* ==================================================================
+   BODY
+   ================================================================== */
+let nextId = 1;
+
+class Body{
+  constructor(type,x,y){
+    this.id    = nextId++;
+    this.type  = type;                 // 'circle' | 'rect' | 'triangle'
+    this.pos   = {x,y};
+    this.home  = {x,y};                // remembered for Reset
+    this.vel   = {x:0,y:0};
+    this.acc   = {x:0,y:0};            // last computed acceleration (for charts)
+    this.scale = 1;
+    this.density = 1;                  // kg per m² (2-D world)
+    if(type==='circle')   this.r  = 0.55;
+    if(type==='rect')    {this.hw = 0.65; this.hh = 0.42;}
+    if(type==='triangle'){this.bw = 1.25; this.ht = 1.05;}
+  }
+  get radius(){ return this.r * this.scale; }
+
+  /** World-space vertices, CCW. Null for circles. */
+  verts(){
+    const s=this.scale, p=this.pos;
+    if(this.type==='rect'){
+      const hw=this.hw*s, hh=this.hh*s;
+      return [{x:p.x-hw,y:p.y-hh},{x:p.x+hw,y:p.y-hh},
+              {x:p.x+hw,y:p.y+hh},{x:p.x-hw,y:p.y+hh}];
+    }
+    if(this.type==='triangle'){
+      const b=this.bw*s, h=this.ht*s;
+      return [{x:p.x,       y:p.y+h*2/3},
+              {x:p.x-b/2,   y:p.y-h/3},
+              {x:p.x+b/2,   y:p.y-h/3}];
+    }
+    return null;
+  }
+  area(){
+    const s=this.scale;
+    if(this.type==='circle')   return Math.PI*(this.r*s)**2;
+    if(this.type==='rect')     return 4*this.hw*s*this.hh*s;
+    return 0.5*this.bw*s*this.ht*s;
+  }
+  get mass(){ return Math.max(0.02, this.area()*this.density); }
+
+  /** Reference length across the flow — used by the drag term. */
+  frontal(){
+    const s=this.scale;
+    if(this.type==='circle')   return 2*this.r*s;
+    if(this.type==='rect')     return 2*Math.max(this.hw,this.hh)*s;
+    return Math.max(this.bw,this.ht)*s;
+  }
+  aabb(){
+    if(this.type==='circle'){
+      const r=this.radius;
+      return {minx:this.pos.x-r,maxx:this.pos.x+r,miny:this.pos.y-r,maxy:this.pos.y+r};
+    }
+    const v=this.verts();
+    let minx=Infinity,maxx=-Infinity,miny=Infinity,maxy=-Infinity;
+    for(const p of v){
+      if(p.x<minx)minx=p.x; if(p.x>maxx)maxx=p.x;
+      if(p.y<miny)miny=p.y; if(p.y>maxy)maxy=p.y;
+    }
+    return {minx,maxx,miny,maxy};
+  }
+  contains(pt){
+    if(this.type==='circle')
+      return (pt.x-this.pos.x)**2 + (pt.y-this.pos.y)**2 <= this.radius**2;
+    const v=this.verts();
+    let inside=false;
+    for(let i=0,j=v.length-1;i<v.length;j=i++){
+      const a=v[i], b=v[j];
+      if((a.y>pt.y)!==(b.y>pt.y) &&
+         pt.x < (b.x-a.x)*(pt.y-a.y)/(b.y-a.y)+a.x) inside=!inside;
+    }
+    return inside;
+  }
+  clone(){
+    const b=new Body(this.type,this.pos.x+0.9,this.pos.y+0.6);
+    b.scale=this.scale; b.density=this.density;
+    b.home={...b.pos};
+    return b;
+  }
+}
+
+/* ==================================================================
+   COLLISION — Separating Axis Theorem
+   Every returned normal points FROM the first shape TOWARD the second,
+   paired with the minimum penetration depth (the MTV).
+   ================================================================== */
+
+function project(verts,axis){
+  let min=Infinity,max=-Infinity;
+  for(const v of verts){ const p=V.dot(v,axis); if(p<min)min=p; if(p>max)max=p; }
+  return {min,max};
+}
+function edgeNormals(verts){
+  const out=[];
+  for(let i=0;i<verts.length;i++){
+    const a=verts[i], b=verts[(i+1)%verts.length];
+    out.push(V.norm({x:-(b.y-a.y), y:b.x-a.x}));
+  }
+  return out;
+}
+function overlapOnAxis(pa,pb){ return Math.min(pa.max,pb.max)-Math.max(pa.min,pb.min); }
+
+function satPolyPoly(va,vb,ca,cb){
+  let best=Infinity,bn=null;
+  for(const ax of edgeNormals(va).concat(edgeNormals(vb))){
+    const o = overlapOnAxis(project(va,ax), project(vb,ax));
+    if(o<=0) return null;                       // a gap ⇒ no collision
+    if(o<best){ best=o; bn=ax; }
+  }
+  if(V.dot(V.sub(cb,ca),bn)<0) bn=V.mul(bn,-1);
+  return {normal:bn, depth:best};
+}
+function satCirclePoly(c,r,vp,cp){
+  const axes=edgeNormals(vp);
+  let closest=vp[0], dmin=Infinity;            // circle also needs the
+  for(const v of vp){                           // "nearest vertex" axis
+    const d=(v.x-c.x)**2+(v.y-c.y)**2;
+    if(d<dmin){dmin=d; closest=v;}
+  }
+  axes.push(V.norm(V.sub(closest,c)));
+  let best=Infinity,bn=null;
+  for(const ax of axes){
+    const pc=V.dot(c,ax);
+    const o=overlapOnAxis({min:pc-r,max:pc+r}, project(vp,ax));
+    if(o<=0) return null;
+    if(o<best){ best=o; bn=ax; }
+  }
+  if(V.dot(V.sub(cp,c),bn)<0) bn=V.mul(bn,-1);
+  return {normal:bn, depth:best};
+}
+/** Collision between the dynamic body A and static body B. */
+function collide(A,B){
+  const ca=A.pos, cb=B.pos;
+  if(A.type==='circle' && B.type==='circle'){
+    const d=V.sub(cb,ca), dist=V.len(d), sum=A.radius+B.radius;
+    if(dist>=sum||dist===0) return null;
+    return {normal:V.mul(d,1/dist), depth:sum-dist};
+  }
+  if(A.type==='circle') return satCirclePoly(ca,A.radius,B.verts(),cb);
+  if(B.type==='circle'){
+    const hit=satCirclePoly(cb,B.radius,A.verts(),ca);
+    return hit ? {normal:V.mul(hit.normal,-1), depth:hit.depth} : null;
+  }
+  return satPolyPoly(A.verts(),B.verts(),ca,cb);
+}
+
+/* ==================================================================
+   WORLD STATE
+   ================================================================== */
+const world = {
+  bodies:[], activeId:null,
+  g:9.81, rest:0.6, fric:0.25, drag:0.10,
+  thrust:0, thrustDir:0,
+  running:true, t:0,
+  W:20, H:14,                 // stage size in metres (recomputed on resize)
+  trail:[], showTrail:true, showVec:true
+};
+const history=[];             // {t,x,y,vx,vy,ax,ay}
+const airDots=[];
+
+const activeBody = () => world.bodies.find(b=>b.id===world.activeId) || null;
+
+/* ==================================================================
+   PHYSICS STEP
+   ------------------------------------------------------------------
+   Semi-implicit (symplectic) Euler:
+        a  = F/m               forces evaluated at the current state
+        v += a·Δt              velocity updated FIRST
+        x += v·Δt              position uses the NEW velocity
+   Updating v before x is what separates this from plain explicit
+   Euler. It costs nothing extra, is still first-order accurate, but
+   conserves energy far better over long runs — an explicit-Euler
+   bouncing ball visibly gains energy, this one does not. With a fixed
+   Δt of 1/240 s the trajectory stays stable even at high speed.
+   ================================================================== */
+function step(dt){
+  const A = activeBody();
+  if(!A) return;
+
+  /* ---- 1. accumulate forces → acceleration ---- */
+  let ax=0, ay=-world.g;                       // gravity
+
+  if(world.thrust>0){                          // constant "thruster"
+    ax += world.thrust*Math.cos(world.thrustDir*DEG);
+    ay += world.thrust*Math.sin(world.thrustDir*DEG);
+  }
+
+  const speed=V.len(A.vel);                    // quadratic aerodynamic drag
+  if(world.drag>0 && speed>1e-4){              //   F = ½·ρ·Cd·A·v²  (opposing v)
+    const Fd = 0.5 * (world.drag*1.6) * A.frontal() * speed*speed;
+    const a  = Fd / A.mass;
+    ax -= a * A.vel.x/speed;
+    ay -= a * A.vel.y/speed;
+  }
+  A.acc={x:ax,y:ay};
+
+  /* ---- 2. integrate (velocity first, then position) ---- */
+  A.vel.x += ax*dt;  A.vel.y += ay*dt;
+  A.pos.x += A.vel.x*dt;  A.pos.y += A.vel.y*dt;
+
+  /* ---- 3. resolve contacts ---- */
+  for(const B of world.bodies){
+    if(B.id===A.id) continue;
+    const hit=collide(A,B);
+    if(hit) resolve(A, V.mul(hit.normal,-1), hit.depth);   // n points B → A
+  }
+  resolveWalls(A);
+
+  world.t += dt;
+}
+
+/**
+ * Impulse response against an immovable obstacle.
+ * n is the unit contact normal pointing back toward the moving body.
+ * Static obstacles have infinite mass, so the mass terms cancel and
+ * the impulse reduces to a direct change in velocity.
+ */
+function resolve(A,n,depth){
+  // positional correction — lift the body out of penetration
+  const push=Math.max(depth-SLOP,0);
+  A.pos.x += n.x*push;  A.pos.y += n.y*push;
+
+  const vn=V.dot(A.vel,n);
+  if(vn>=0) return;                            // already separating
+
+  // restitution is suppressed at low speed, otherwise a resting body
+  // jitters forever on micro-bounces
+  const e = Math.abs(vn)<REST_VEL ? 0 : world.rest;
+  const jn = -(1+e)*vn;
+  A.vel.x += n.x*jn;  A.vel.y += n.y*jn;
+
+  // Coulomb friction along the tangent, capped at μ·|normal impulse|
+  const vt={x:A.vel.x-V.dot(A.vel,n)*n.x, y:A.vel.y-V.dot(A.vel,n)*n.y};
+  const tl=V.len(vt);
+  if(tl>1e-5){
+    const t=V.mul(vt,1/tl);
+    const jt=Math.min(tl, world.fric*Math.abs(jn));
+    A.vel.x-=t.x*jt;  A.vel.y-=t.y*jt;
+  }
+}
+
+/** Stage boundaries treated as four immovable walls. */
+function resolveWalls(A){
+  const b=A.aabb();
+  if(b.minx<0)        resolve(A,{x: 1,y: 0}, -b.minx);
+  if(b.maxx>world.W)  resolve(A,{x:-1,y: 0}, b.maxx-world.W);
+  if(b.miny<0)        resolve(A,{x: 0,y: 1}, -b.miny);
+  if(b.maxy>world.H)  resolve(A,{x: 0,y:-1}, b.maxy-world.H);
+}
+
+/* ==================================================================
+   CANVAS PLUMBING
+   ================================================================== */
+const stage=document.getElementById('stage');
+const sctx=stage.getContext('2d');
+let DPR=1, SW=0, SH=0;
+
+function sizeStage(){
+  const r=stage.parentElement.getBoundingClientRect();
+  DPR=Math.min(window.devicePixelRatio||1, 2);
+  SW=Math.max(320,r.width); SH=Math.max(240,r.height);
+  stage.width=SW*DPR; stage.height=SH*DPR;
+  sctx.setTransform(DPR,0,0,DPR,0,0);
+  world.W=SW/PPM; world.H=SH/PPM;
+  seedAir();
+}
+const toS = p => ({x:p.x*PPM, y:SH-p.y*PPM});          // metres → screen px
+const toW = p => ({x:p.x/PPM, y:(SH-p.y)/PPM});        // screen px → metres
+
+/* ---------- air-density particle field ---------- */
+function seedAir(){
+  airDots.length=0;
+  const n=Math.round((SW*SH)/5200);
+  for(let i=0;i<n;i++)
+    airDots.push({x:Math.random()*world.W, y:Math.random()*world.H,
+                  p:Math.random()*Math.PI*2, s:0.25+Math.random()*0.55});
+}
+function updateAir(dt){
+  for(const d of airDots){
+    d.p+=dt*d.s;
+    d.x+=Math.cos(d.p)*dt*0.28;
+    d.y+=Math.sin(d.p*0.7)*dt*0.2;
+    if(d.x<0)d.x+=world.W; if(d.x>world.W)d.x-=world.W;
+    if(d.y<0)d.y+=world.H; if(d.y>world.H)d.y-=world.H;
+  }
+}
+
+/* ==================================================================
+   RENDER
+   ================================================================== */
+function drawStage(){
+  sctx.clearRect(0,0,SW,SH);
+
+  // metre grid
+  sctx.strokeStyle='#1D222B'; sctx.lineWidth=1;
+  sctx.beginPath();
+  for(let x=0;x<=world.W;x++){const p=Math.round(x*PPM)+.5; sctx.moveTo(p,0); sctx.lineTo(p,SH);}
+  for(let y=0;y<=world.H;y++){const p=Math.round(SH-y*PPM)+.5; sctx.moveTo(0,p); sctx.lineTo(SW,p);}
+  sctx.stroke();
+
+  // air density field
+  if(world.drag>0.005){
+    sctx.fillStyle=`rgba(148,156,168,${0.07+world.drag*0.30})`;
+    const r=0.7+world.drag*1.5;
+    for(const d of airDots){
+      const s=toS(d);
+      sctx.beginPath(); sctx.arc(s.x,s.y,r,0,6.2832); sctx.fill();
+    }
+  }
+
+  // ground band
+  sctx.fillStyle='rgba(240,162,2,0.05)';
+  sctx.fillRect(0,SH-3,SW,3);
+
+  // trail
+  if(world.showTrail && world.trail.length>1){
+    sctx.strokeStyle='rgba(240,162,2,0.42)'; sctx.lineWidth=1.6;
+    sctx.beginPath();
+    world.trail.forEach((p,i)=>{const s=toS(p); i?sctx.lineTo(s.x,s.y):sctx.moveTo(s.x,s.y);});
+    sctx.stroke();
+  }
+
+  for(const b of world.bodies) drawBody(b, b.id===world.activeId);
+
+  const A=activeBody();
+  if(A && world.showVec) drawVectors(A);
+}
+
+function bodyPath(b){
+  sctx.beginPath();
+  if(b.type==='circle'){
+    const s=toS(b.pos);
+    sctx.arc(s.x,s.y,b.radius*PPM,0,6.2832);
+  }else{
+    b.verts().forEach((v,i)=>{const s=toS(v); i?sctx.lineTo(s.x,s.y):sctx.moveTo(s.x,s.y);});
+    sctx.closePath();
+  }
+}
+function drawBody(b,isActive){
+  bodyPath(b);
+  sctx.fillStyle   = isActive ? 'rgba(240,162,2,0.22)' : 'rgba(148,156,168,0.13)';
+  sctx.strokeStyle = isActive ? '#F0A202' : '#5C6470';
+  sctx.lineWidth   = isActive ? 2.2 : 1.5;
+  sctx.fill(); sctx.stroke();
+
+  if(isActive){                                    // centre-of-mass marker
+    const s=toS(b.pos);
+    sctx.fillStyle='#F0A202';
+    sctx.beginPath(); sctx.arc(s.x,s.y,2.6,0,6.2832); sctx.fill();
+  }
+}
+function arrow(from,to,color,w){
+  const d=V.sub(to,from), L=V.len(d);
+  if(L<6) return;
+  const u=V.mul(d,1/L), head=Math.min(11,L*0.38);
+  const tip=V.sub(to,V.mul(u,head)), perp={x:-u.y,y:u.x}, hw=head*0.42;
+  sctx.strokeStyle=color; sctx.lineWidth=w; sctx.lineCap='round';
+  sctx.beginPath(); sctx.moveTo(from.x,from.y); sctx.lineTo(tip.x,tip.y); sctx.stroke();
+  sctx.fillStyle=color;
+  sctx.beginPath();
+  sctx.moveTo(to.x,to.y);
+  sctx.lineTo(tip.x+perp.x*hw, tip.y+perp.y*hw);
+  sctx.lineTo(tip.x-perp.x*hw, tip.y-perp.y*hw);
+  sctx.closePath(); sctx.fill();
+}
+function drawVectors(A){
+  const o=toS(A.pos);
+  arrow(o,{x:o.x+A.vel.x*6, y:o.y-A.vel.y*6},'#3B82F6',2.4);   // velocity
+  arrow(o,{x:o.x+A.acc.x*3, y:o.y-A.acc.y*3},'#EF4444',2.0);   // acceleration
+}
+
+/* ==================================================================
+   CHARTS — three synchronised rolling line plots
+   ================================================================== */
+class Chart{
+  constructor(id,keys,unit){
+    this.cv=document.getElementById(id);
+    this.ctx=this.cv.getContext('2d');
+    this.keys=keys; this.unit=unit;
+    this.lo=-1; this.hi=1;                        // smoothed y-range
+  }
+  size(){
+    const r=this.cv.getBoundingClientRect();
+    this.w=r.width; this.h=r.height;
+    this.cv.width=r.width*DPR; this.cv.height=r.height*DPR;
+    this.ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  draw(data,t0,t1){
+    const c=this.ctx, w=this.w, h=this.h;
+    const L=42, R=6, T=8, B=18;
+    c.clearRect(0,0,w,h);
+
+    // frame
+    c.strokeStyle='#2B313B'; c.lineWidth=1;
+    c.strokeRect(L+.5,T+.5,w-L-R-1,h-T-B-1);
+
+    // target range from the visible window
+    let mn=Infinity,mx=-Infinity;
+    for(const s of data) for(const k of this.keys){
+      if(s[k]<mn)mn=s[k]; if(s[k]>mx)mx=s[k];
+    }
+    if(!isFinite(mn)){mn=-1;mx=1;}
+    const pad=Math.max((mx-mn)*0.18, 0.5);
+    mn-=pad; mx+=pad;
+    this.lo += (mn-this.lo)*0.14;                 // ease the axis so it
+    this.hi += (mx-this.hi)*0.14;                 // doesn't snap around
+    const lo=this.lo, hi=this.hi;
+
+    const X=t=>L+((t-t0)/(t1-t0||1))*(w-L-R);
+    const Y=v=>T+(1-(v-lo)/((hi-lo)||1))*(h-T-B);
+
+    // gridlines + y labels
+    c.font='9px ui-monospace,monospace'; c.textAlign='right'; c.textBaseline='middle';
+    for(let i=0;i<=3;i++){
+      const v=lo+(hi-lo)*i/3, y=Y(v);
+      c.strokeStyle='#22272F'; c.beginPath();
+      c.moveTo(L,y); c.lineTo(w-R,y); c.stroke();
+      c.fillStyle='#5C6470';
+      c.fillText(v.toFixed(Math.abs(hi-lo)<4?1:0), L-5, y);
+    }
+    // zero line
+    if(lo<0&&hi>0){
+      const y=Y(0);
+      c.strokeStyle='#3C4553'; c.setLineDash([3,3]);
+      c.beginPath(); c.moveTo(L,y); c.lineTo(w-R,y); c.stroke(); c.setLineDash([]);
+    }
+    // x labels
+    c.textAlign='center'; c.textBaseline='top'; c.fillStyle='#5C6470';
+    c.fillText(t0.toFixed(1)+'s', L+12, h-B+4);
+    c.fillText(t1.toFixed(1)+'s', w-R-12, h-B+4);
+    // unit
+    c.save(); c.translate(9,(h-B+T)/2); c.rotate(-Math.PI/2);
+    c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#5C6470';
+    c.fillText(this.unit,0,0); c.restore();
+
+    if(data.length<2) return;
+
+    // series
+    const colors=['#3B82F6','#EF4444'];
+    c.save();
+    c.beginPath(); c.rect(L,T,w-L-R,h-T-B); c.clip();
+    this.keys.forEach((k,i)=>{
+      c.strokeStyle=colors[i]; c.lineWidth=1.7; c.lineJoin='round';
+      c.beginPath();
+      data.forEach((s,j)=>{ const x=X(s.t), y=Y(s[k]); j?c.lineTo(x,y):c.moveTo(x,y); });
+      c.stroke();
+    });
+    c.restore();
+  }
+}
+const charts=[
+  new Chart('c-pos',['x','y'],'m'),
+  new Chart('c-vel',['vx','vy'],'m/s'),
+  new Chart('c-acc',['ax','ay'],'m/s²')
+];
+function drawCharts(){
+  const t1=world.t, t0=Math.max(0,t1-HIST_SECONDS);
+  const win=history.filter(s=>s.t>=t0);
+  for(const ch of charts) ch.draw(win,t0,t1);
+}
+
+/* ==================================================================
+   MAIN LOOP — fixed-timestep accumulator
+   ================================================================== */
+let last=performance.now(), acc=0, sampleAcc=0;
+
+function frame(now){
+  let dt=(now-last)/1000; last=now;
+  if(dt>0.25) dt=0.25;                            // tab was hidden
+
+  if(world.running){
+    acc+=dt;
+    let n=0;
+    while(acc>=FIXED_DT && n<MAX_STEPS){ step(FIXED_DT); acc-=FIXED_DT; n++; }
+    if(n===MAX_STEPS) acc=0;
+
+    updateAir(dt);
+
+    const A=activeBody();
+    if(A){
+      // trail
+      const tp=world.trail[world.trail.length-1];
+      if(!tp || Math.hypot(A.pos.x-tp.x,A.pos.y-tp.y)>0.06){
+        world.trail.push({x:A.pos.x,y:A.pos.y});
+        if(world.trail.length>520) world.trail.shift();
+      }
+      // chart samples at ~90 Hz
+      sampleAcc+=dt;
+      if(sampleAcc>=1/90){
+        sampleAcc=0;
+        history.push({t:world.t, x:A.pos.x, y:A.pos.y,
+                      vx:A.vel.x, vy:A.vel.y, ax:A.acc.x, ay:A.acc.y});
+        while(history.length && history[0].t < world.t-HIST_SECONDS-1) history.shift();
+      }
+    }
+  }
+
+  drawStage();
+  drawCharts();
+  updateHud();
+  requestAnimationFrame(frame);
+}
+
+/* ==================================================================
+   HUD + READOUT
+   ================================================================== */
+const $=id=>document.getElementById(id);
+const hud=$('hud'), readout=$('readout');
+
+function updateHud(){
+  $('chip-time').textContent='t = '+world.t.toFixed(2)+' s';
+  $('chip-count').textContent=world.bodies.length+
+    (world.bodies.length===1?' object':' objects');
+  $('empty').hidden = world.bodies.length>0;
+
+  const A=activeBody();
+  if(!A){
+    hud.hidden=true;
+    readout.textContent='No active body.';
+    return;
+  }
+  hud.hidden=false;
+  const sp=V.len(A.vel), am=V.len(A.acc);
+  hud.innerHTML=
+    `pos <b>${A.pos.x.toFixed(2)}, ${A.pos.y.toFixed(2)}</b> m<br>`+
+    `vel <b>${A.vel.x.toFixed(2)}, ${A.vel.y.toFixed(2)}</b> m/s<br>`+
+    `|v| <b>${sp.toFixed(2)}</b> m/s`;
+  readout.innerHTML=
+    `x&nbsp;&nbsp;<b style="color:var(--text)">${A.pos.x.toFixed(3)}</b> m<br>`+
+    `y&nbsp;&nbsp;<b style="color:var(--text)">${A.pos.y.toFixed(3)}</b> m<br>`+
+    `v<sub>x</sub> <b style="color:var(--text)">${A.vel.x.toFixed(3)}</b> m/s<br>`+
+    `v<sub>y</sub> <b style="color:var(--text)">${A.vel.y.toFixed(3)}</b> m/s<br>`+
+    `|v| <b style="color:var(--text)">${sp.toFixed(3)}</b> m/s<br>`+
+    `|a| <b style="color:var(--text)">${am.toFixed(3)}</b> m/s²<br>`+
+    `m&nbsp;&nbsp;<b style="color:var(--text)">${A.mass.toFixed(2)}</b> kg<br>`+
+    `KE <b style="color:var(--text)">${(0.5*A.mass*sp*sp).toFixed(2)}</b> J`;
+}
+
+/* ==================================================================
+   INTERACTION
+   ================================================================== */
+let spawnType=null, drag=null;
+
+document.querySelectorAll('[data-spawn]').forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    const t=btn.dataset.spawn;
+    spawnType = spawnType===t ? null : t;
+    document.querySelectorAll('[data-spawn]').forEach(b=>
+      b.classList.toggle('on', b.dataset.spawn===spawnType));
+    $('spawnhint').textContent = spawnType
+      ? `Click the stage to drop a ${spawnType}. Press Esc to stop placing.`
+      : 'Pick a shape, then click the stage to place it. Click any object to make it the active body.';
+  });
+});
+addEventListener('keydown',e=>{
+  if(e.key==='Escape'){
+    spawnType=null;
+    document.querySelectorAll('[data-spawn]').forEach(b=>b.classList.remove('on'));
+  }
+  if((e.key==='Delete'||e.key==='Backspace') && world.activeId &&
+     !/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)){
+    e.preventDefault(); deleteActive();
+  }
+  if(e.key===' '){ e.preventDefault(); togglePlay(); }
+});
+
+stage.addEventListener('pointerdown',e=>{
+  const r=stage.getBoundingClientRect();
+  const w=toW({x:e.clientX-r.left, y:e.clientY-r.top});
+
+  if(spawnType){ addBody(spawnType,w.x,w.y); return; }
+
+  // topmost body under the cursor
+  for(let i=world.bodies.length-1;i>=0;i--){
+    const b=world.bodies[i];
+    if(b.contains(w)){
+      setActive(b.id);
+      drag={id:b.id, dx:b.pos.x-w.x, dy:b.pos.y-w.y};
+      stage.setPointerCapture(e.pointerId);
+      return;
+    }
+  }
+});
+stage.addEventListener('pointermove',e=>{
+  if(!drag) return;
+  const r=stage.getBoundingClientRect();
+  const w=toW({x:e.clientX-r.left, y:e.clientY-r.top});
+  const b=world.bodies.find(x=>x.id===drag.id);
+  if(!b) return;
+  b.pos.x=clamp(w.x+drag.dx, 0, world.W);
+  b.pos.y=clamp(w.y+drag.dy, 0, world.H);
+  b.home={...b.pos};
+  b.vel={x:0,y:0};                       // repositioning parks the body
+  if(b.id===world.activeId) resetTrace();
+});
+stage.addEventListener('pointerup',()=>{ drag=null; });
+stage.addEventListener('pointercancel',()=>{ drag=null; });
+
+stage.addEventListener('wheel',e=>{
+  const A=activeBody(); if(!A) return;
+  e.preventDefault();
+  A.scale=clamp(A.scale*(e.deltaY<0?1.07:0.935), 0.3, 3);
+  $('s-scale').value=A.scale;
+  $('v-scale').innerHTML=A.scale.toFixed(2)+'<span class="u">×</span>';
+},{passive:false});
+
+/* ---------- body lifecycle ---------- */
+function addBody(type,x,y){
+  const b=new Body(type,clamp(x,1,world.W-1),clamp(y,1,world.H-1));
+  b.home={...b.pos};
+  world.bodies.push(b);
+  setActive(b.id);
+}
+function setActive(id){
+  world.activeId=id;
+  resetTrace();
+  const A=activeBody();
+  const on=!!A;
+  ['s-scale','s-dens','b-del','b-clone','b-launch','b-drop']
+    .forEach(k=>$(k).disabled=!on);
+  if(A){
+    $('s-scale').value=A.scale;
+    $('v-scale').innerHTML=A.scale.toFixed(2)+'<span class="u">×</span>';
+    $('s-dens').value=A.density;
+    $('v-dens').innerHTML=A.density.toFixed(1)+'<span class="u">kg/m²</span>';
+  }
+}
+function deleteActive(){
+  world.bodies=world.bodies.filter(b=>b.id!==world.activeId);
+  world.activeId = world.bodies.length ? world.bodies[world.bodies.length-1].id : null;
+  setActive(world.activeId);
+}
+/** Clear the plotted history and trail without touching the scene. */
+function resetTrace(){ history.length=0; world.trail.length=0; world.t=0; }
+
+/* ---------- launch controls ---------- */
+$('b-launch').addEventListener('click',()=>{
+  const A=activeBody(); if(!A) return;
+  const sp=parseFloat($('i-speed').value)||0;
+  const an=(parseFloat($('i-angle').value)||0)*DEG;
+  A.vel={x:sp*Math.cos(an), y:sp*Math.sin(an)};
+  resetTrace();
+  world.running=true; syncPlay();
+});
+$('b-drop').addEventListener('click',()=>{
+  const A=activeBody(); if(!A) return;
+  A.vel={x:0,y:0};
+  resetTrace();
+  world.running=true; syncPlay();
+});
+
+/* ---------- transport ---------- */
+function togglePlay(){ world.running=!world.running; syncPlay(); }
+function syncPlay(){
+  const b=$('b-play');
+  b.textContent = world.running ? 'Pause' : 'Play';
+  b.classList.toggle('accent', world.running);
+}
+$('b-play').addEventListener('click',togglePlay);
+$('b-reset').addEventListener('click',()=>{
+  for(const b of world.bodies){ b.pos={...b.home}; b.vel={x:0,y:0}; b.acc={x:0,y:0}; }
+  resetTrace();
+});
+$('b-clear').addEventListener('click',()=>{
+  world.bodies.length=0; world.activeId=null; setActive(null); resetTrace();
+});
+$('b-clone').addEventListener('click',()=>{
+  const A=activeBody(); if(!A) return;
+  const c=A.clone(); world.bodies.push(c); setActive(c.id);
+});
+$('b-del').addEventListener('click',deleteActive);
+
+$('b-trail').addEventListener('click',e=>{
+  world.showTrail=!world.showTrail; e.target.classList.toggle('on',world.showTrail);
+});
+$('b-vec').addEventListener('click',e=>{
+  world.showVec=!world.showVec; e.target.classList.toggle('on',world.showVec);
+});
+
+/* ---------- sliders ---------- */
+function bindSlider(id,valId,key,fmt,unit){
+  const s=$(id), v=$(valId);
+  s.addEventListener('input',()=>{
+    const n=parseFloat(s.value);
+    world[key]=n;
+    v.innerHTML=fmt(n)+(unit?`<span class="u">${unit}</span>`:'');
+    if(key==='g') $('i-planet').value = [...$('i-planet').options]
+      .some(o=>parseFloat(o.value).toFixed(2)===n.toFixed(2))
+      ? [...$('i-planet').options].find(o=>parseFloat(o.value).toFixed(2)===n.toFixed(2)).value
+      : '';
+  });
+}
+bindSlider('s-grav','v-grav','g',   n=>n.toFixed(2),'m/s²');
+bindSlider('s-rest','v-rest','rest',n=>n.toFixed(2),'');
+bindSlider('s-fric','v-fric','fric',n=>n.toFixed(2),'');
+bindSlider('s-drag','v-drag','drag',n=>n.toFixed(2),'');
+bindSlider('s-thrust','v-thrust','thrust',n=>n.toFixed(1),'m/s²');
+bindSlider('s-thrustdir','v-thrustdir','thrustDir',n=>n.toFixed(0),'deg');
+
+$('i-planet').addEventListener('change',e=>{
+  const g=parseFloat(e.target.value);
+  if(isNaN(g)) return;
+  world.g=g; $('s-grav').value=g;
+  $('v-grav').innerHTML=g.toFixed(2)+'<span class="u">m/s²</span>';
+});
+$('s-scale').addEventListener('input',e=>{
+  const A=activeBody(); if(!A) return;
+  A.scale=parseFloat(e.target.value);
+  $('v-scale').innerHTML=A.scale.toFixed(2)+'<span class="u">×</span>';
+});
+$('s-dens').addEventListener('input',e=>{
+  const A=activeBody(); if(!A) return;
+  A.density=parseFloat(e.target.value);
+  $('v-dens').innerHTML=A.density.toFixed(1)+'<span class="u">kg/m²</span>';
+});
+
+/* ==================================================================
+   BOOT
+   ================================================================== */
+function resizeAll(){
+  sizeStage();
+  for(const ch of charts) ch.size();
+}
+addEventListener('resize',resizeAll);
+
+resizeAll();
+syncPlay();
+
+// a small starting scene so the stage is never blank on first load
+(function demoScene(){
+  const ramp=new Body('triangle', world.W*0.62, 1.4);
+  ramp.scale=1.9; ramp.home={...ramp.pos};
+  const block=new Body('rect', world.W*0.86, 0.9);
+  block.scale=1.3; block.home={...block.pos};
+  const ball=new Body('circle', 1.8, world.H*0.72);
+  ball.home={...ball.pos};
+  world.bodies.push(ramp, block, ball);
+  setActive(ball.id);
+})();
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
