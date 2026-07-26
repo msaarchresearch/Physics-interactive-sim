@@ -1,0 +1,1059 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pendulum Bench &middot; Simple harmonic motion, compared</title>
+<meta name="description" content="Swing one pendulum or two side by side. Change thread length and gravity, show force, velocity and acceleration vectors, and watch where the small-angle approximation stops being true.">
+<style>
+/* ==================================================================
+   TOKENS — shared with the other modules in this collection
+   ================================================================== */
+:root{
+  --ground:#15171C; --panel:#1B1F26; --panel-2:#20252E;
+  --edge:#2B313B; --edge-lit:#3C4553;
+  --text:#E9ECF0; --dim:#949CA8; --faint:#5C6470;
+  --accent:#F0A202;
+  --c1:#3B82F6;          /* first component  (x  or tangential) */
+  --c2:#EF4444;          /* second component (y  or radial)     */
+  --force:#F0A202;       /* the three vector families           */
+  --vel:#22C55E;
+  --acc:#A855F7;
+  --pa:#38BDF8;          /* pendulum A */
+  --pb:#FB7185;          /* pendulum B */
+  --stage:#0F1116;
+  --sans:system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;height:100%;background:var(--ground);color:var(--text);
+  font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+
+#app{display:grid;grid-template-columns:268px minmax(0,1fr) 322px;
+  grid-template-rows:100vh;gap:1px;background:var(--edge)}
+.col{background:var(--ground);overflow-y:auto;overflow-x:hidden}
+.col::-webkit-scrollbar{width:9px}
+.col::-webkit-scrollbar-thumb{background:var(--edge);border-radius:9px}
+.col::-webkit-scrollbar-track{background:transparent}
+
+.brand{padding:16px 16px 12px;border-bottom:1px solid var(--edge)}
+.brand h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.02em}
+.brand .sub{font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);margin-top:4px}
+
+.group{padding:14px 16px;border-bottom:1px solid var(--edge)}
+.group h2{margin:0 0 11px;font-family:var(--mono);font-size:10px;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--faint);font-weight:500;
+  display:flex;align-items:center;gap:7px}
+.group h2 .swatch{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+
+.btn{font-family:var(--sans);font-size:12.5px;color:var(--dim);background:var(--panel);
+  border:1px solid var(--edge);border-radius:6px;padding:8px 10px;cursor:pointer;
+  transition:border-color .13s,color .13s,background .13s;width:100%;
+  display:flex;align-items:center;justify-content:center;gap:7px}
+.btn:hover{border-color:var(--edge-lit);color:var(--text)}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+.btn.on{background:var(--text);color:var(--ground);border-color:var(--text);font-weight:600}
+.btn.accent{background:var(--accent);color:#1A1205;border-color:var(--accent);font-weight:600}
+.btn.accent:hover{filter:brightness(1.08)}
+.btn .dot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;
+  box-shadow:0 0 0 1px rgba(0,0,0,.35) inset}
+.row{display:grid;gap:7px}
+.row.c2{grid-template-columns:1fr 1fr}
+
+.ctl{margin-bottom:13px}
+.ctl:last-child{margin-bottom:0}
+.ctl-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:5px}
+.ctl-top label{font-size:12px;color:var(--dim)}
+.val{font-family:var(--mono);font-size:11.5px;color:var(--text)}
+.val .u{color:var(--faint);font-size:9.5px;margin-left:2px}
+input[type=range]{width:100%;height:16px;cursor:pointer;margin:0;accent-color:var(--accent)}
+select{width:100%;background:var(--stage);color:var(--text);border:1px solid var(--edge);
+  border-radius:6px;padding:7px 8px;font-family:var(--mono);font-size:12px}
+select:focus-visible,input:focus-visible,.btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.hint{font-size:11px;line-height:1.55;color:var(--faint);margin:9px 0 0}
+.seg{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--edge);
+  border-radius:6px;overflow:hidden}
+.seg button{font-family:var(--mono);font-size:11px;padding:7px 4px;border:0;cursor:pointer;
+  background:var(--panel);color:var(--dim)}
+.seg button.on{background:var(--text);color:var(--ground);font-weight:600}
+
+#stagecol{display:flex;flex-direction:column;overflow:hidden}
+#toolbar{display:flex;align-items:center;gap:8px;padding:10px 14px;
+  border-bottom:1px solid var(--edge);flex-wrap:wrap}
+#toolbar .btn{width:auto;padding:7px 13px}
+.spacer{flex:1}
+.chip{font-family:var(--mono);font-size:10.5px;color:var(--faint);
+  border:1px solid var(--edge);border-radius:999px;padding:4px 10px;white-space:nowrap}
+#stagewrap{flex:1;position:relative;min-height:0;background:var(--stage)}
+#stage{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none}
+#vkey{position:absolute;left:12px;bottom:12px;pointer-events:none;
+  font-family:var(--mono);font-size:10.5px;line-height:1.8;color:var(--dim);
+  background:rgba(15,17,22,.84);border:1px solid var(--edge);border-radius:7px;padding:8px 11px}
+#vkey .k{display:flex;align-items:center;gap:7px}
+#vkey i{width:14px;height:2.5px;border-radius:2px;display:inline-block}
+#vkey .dash{background:none;border-top:2.5px dashed currentColor;height:0}
+
+.chartbox{padding:12px 14px;border-bottom:1px solid var(--edge)}
+.chart-head{display:flex;justify-content:space-between;align-items:baseline;
+  margin-bottom:7px;gap:8px}
+.chart-head h3{margin:0;font-size:12.5px;font-weight:600;letter-spacing:-.01em}
+.legend{display:flex;flex-wrap:wrap;gap:9px;font-family:var(--mono);font-size:9.5px;color:var(--dim)}
+.legend i{display:inline-block;width:12px;height:0;vertical-align:middle;margin-right:4px;
+  border-top:2.5px solid}
+.legend i.d{border-top-style:dashed}
+.chart-c{position:relative;width:100%;height:126px}
+.chart-c canvas{position:absolute;inset:0;width:100%;height:100%}
+#periodwrap{height:150px}
+
+table.num{width:100%;border-collapse:collapse;font-family:var(--mono);font-size:11px;
+  margin-top:10px}
+table.num th{text-align:right;font-weight:500;color:var(--faint);font-size:9.5px;
+  letter-spacing:.08em;text-transform:uppercase;padding:0 0 6px}
+table.num th:first-child{text-align:left}
+table.num td{padding:4px 0;border-top:1px solid var(--edge);text-align:right;color:var(--text)}
+table.num td:first-child{text-align:left;color:var(--dim)}
+table.num td .sw{display:inline-block;width:7px;height:7px;border-radius:2px;margin-right:6px}
+
+@media(max-width:1240px){#app{grid-template-columns:242px minmax(0,1fr) 286px}}
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- ==================================================================
+     LEFT — CONTROLS
+     ================================================================== -->
+<aside class="col">
+  <div class="brand">
+    <h1>Pendulum Bench</h1>
+    <div class="sub">Simple harmonic motion</div>
+  </div>
+
+  <!-- pendulum A -->
+  <div class="group">
+    <h2><span class="swatch" style="background:var(--pa)"></span>Pendulum A</h2>
+    <div class="ctl">
+      <div class="ctl-top"><label for="aL">Thread length</label>
+        <span class="val" id="vaL">1.00<span class="u">m</span></span></div>
+      <input type="range" id="aL" min="0.2" max="4" step="0.01" value="1">
+    </div>
+    <div class="ctl">
+      <div class="ctl-top"><label for="aA">Release angle</label>
+        <span class="val" id="vaA">30<span class="u">deg</span></span></div>
+      <input type="range" id="aA" min="1" max="170" step="1" value="30">
+    </div>
+    <div class="ctl">
+      <div class="ctl-top"><label for="aM">Bob mass</label>
+        <span class="val" id="vaM">1.0<span class="u">kg</span></span></div>
+      <input type="range" id="aM" min="0.1" max="5" step="0.1" value="1">
+    </div>
+  </div>
+
+  <!-- pendulum B -->
+  <div class="group">
+    <h2><span class="swatch" style="background:var(--pb)"></span>Pendulum B</h2>
+    <button class="btn" id="bOn" style="margin-bottom:12px">Compare a second pendulum</button>
+    <div id="bBlock" hidden>
+      <div class="ctl">
+        <div class="ctl-top"><label for="bL">Thread length</label>
+          <span class="val" id="vbL">1.50<span class="u">m</span></span></div>
+        <input type="range" id="bL" min="0.2" max="4" step="0.01" value="1.5">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="bA">Release angle</label>
+          <span class="val" id="vbA">30<span class="u">deg</span></span></div>
+        <input type="range" id="bA" min="1" max="170" step="1" value="30">
+      </div>
+      <div class="ctl">
+        <div class="ctl-top"><label for="bM">Bob mass</label>
+          <span class="val" id="vbM">1.0<span class="u">kg</span></span></div>
+        <input type="range" id="bM" min="0.1" max="5" step="0.1" value="1">
+      </div>
+    </div>
+    <p class="hint">Mass changes the forces but not the period — worth testing.</p>
+  </div>
+
+  <!-- gravity -->
+  <div class="group">
+    <h2>Gravity</h2>
+    <div class="ctl">
+      <select id="planet" aria-label="Gravity preset">
+        <option value="9.81" selected>Earth &mdash; 9.81</option>
+        <option value="1.62">Moon &mdash; 1.62</option>
+        <option value="3.72">Mars &mdash; 3.72</option>
+        <option value="24.79">Jupiter &mdash; 24.79</option>
+        <option value="8.87">Venus &mdash; 8.87</option>
+        <option value="3.70">Mercury &mdash; 3.70</option>
+        <option value="10.44">Saturn &mdash; 10.44</option>
+        <option value="8.69">Uranus &mdash; 8.69</option>
+        <option value="11.15">Neptune &mdash; 11.15</option>
+        <option value="1.35">Titan &mdash; 1.35</option>
+        <option value="1.31">Europa &mdash; 1.31</option>
+        <option value="1.80">Io &mdash; 1.80</option>
+        <option value="0.62">Pluto &mdash; 0.62</option>
+        <option value="0.06">Ceres &mdash; 0.06</option>
+      </select>
+    </div>
+    <div class="ctl">
+      <div class="ctl-top"><label for="g">g</label>
+        <span class="val" id="vg">9.81<span class="u">m/s²</span></span></div>
+      <input type="range" id="g" min="0" max="30" step="0.01" value="9.81">
+    </div>
+    <div class="ctl">
+      <div class="ctl-top"><label for="damp">Damping</label>
+        <span class="val" id="vdamp">0.00<span class="u">1/s</span></span></div>
+      <input type="range" id="damp" min="0" max="1.5" step="0.01" value="0">
+    </div>
+  </div>
+
+  <!-- vectors -->
+  <div class="group">
+    <h2>Vectors on the bob</h2>
+    <div class="row" style="gap:7px">
+      <button class="btn on" id="tF"><span class="dot" style="background:var(--force)"></span>Forces</button>
+      <button class="btn" id="tV"><span class="dot" style="background:var(--vel)"></span>Velocity</button>
+      <button class="btn" id="tA"><span class="dot" style="background:var(--acc)"></span>Acceleration</button>
+    </div>
+    <p class="hint">Solid arrows are resultants. Dashed arrows are the components,
+      completed as a parallelogram.</p>
+  </div>
+
+  <!-- frame -->
+  <div class="group">
+    <h2>Resolve components along</h2>
+    <div class="seg" id="frameSeg">
+      <button data-frame="xy" class="on">x &nbsp;/&nbsp; y</button>
+      <button data-frame="tr">tangent / radial</button>
+    </div>
+    <p class="hint" id="frameHint">Horizontal and vertical. Switch to
+      tangent / radial to separate the restoring force from the centripetal pull.</p>
+  </div>
+
+  <!-- model -->
+  <div class="group">
+    <h2>Model</h2>
+    <div class="seg" id="modelSeg">
+      <button data-model="exact" class="on">Exact</button>
+      <button data-model="sha">Small angle</button>
+    </div>
+    <p class="hint" id="modelHint">Exact uses sin θ. Small angle replaces it with θ —
+      true simple harmonic motion, accurate only for small swings.</p>
+  </div>
+</aside>
+
+<!-- ==================================================================
+     CENTER — STAGE
+     ================================================================== -->
+<section id="stagecol">
+  <div id="toolbar">
+    <button class="btn accent" id="play">Pause</button>
+    <button class="btn" id="release">Release</button>
+    <div class="spacer"></div>
+    <span class="chip" id="chipSpeed">speed 1.0&times;</span>
+    <input type="range" id="speed" min="0.1" max="2" step="0.1" value="1"
+           style="width:90px" aria-label="Playback speed">
+    <span class="chip" id="chipT">t = 0.00 s</span>
+  </div>
+  <div id="stagewrap">
+    <canvas id="stage"></canvas>
+    <div id="vkey"></div>
+  </div>
+</section>
+
+<!-- ==================================================================
+     RIGHT — ANALYTICS
+     ================================================================== -->
+<aside class="col">
+  <div class="brand">
+    <h1>Analytics</h1>
+    <div class="sub">Live &middot; last 8 seconds</div>
+  </div>
+
+  <div class="chartbox">
+    <div class="chart-head"><h3>Velocity</h3>
+      <div class="legend" id="legV"></div></div>
+    <div class="chart-c"><canvas id="cV"></canvas></div>
+  </div>
+
+  <div class="chartbox">
+    <div class="chart-head"><h3>Acceleration</h3>
+      <div class="legend" id="legA"></div></div>
+    <div class="chart-c"><canvas id="cA"></canvas></div>
+  </div>
+
+  <div class="chartbox">
+    <div class="chart-head"><h3>Time for one cycle</h3>
+      <div class="legend">
+        <span><i style="border-color:var(--dim)"></i>exact</span>
+        <span><i class="d" style="border-color:var(--faint)"></i>small angle</span>
+      </div></div>
+    <div class="chart-c" id="periodwrap"><canvas id="cP"></canvas></div>
+    <table class="num" id="ptable"></table>
+    <p class="hint" id="pnote"></p>
+  </div>
+</aside>
+</div>
+
+<script>
+"use strict";
+/* ==================================================================
+   PENDULUM BENCH
+   ------------------------------------------------------------------
+   A pendulum is only a *simple harmonic* oscillator in the limit of
+   small swings. This module integrates the exact equation of motion
+   and plots the ideal small-angle prediction next to it, so the
+   moment the approximation breaks is visible rather than asserted.
+
+     exact        θ'' = -(g/L)·sin θ  -  b·θ'
+     small angle  θ'' = -(g/L)·θ      -  b·θ'
+
+   θ is measured from the downward vertical, positive anticlockwise.
+   ================================================================== */
+
+const FIXED_DT   = 1/480;   // physics timestep, seconds
+const MAX_STEPS  = 12;      // guards against a spiral of death after a stall
+const HIST_SEC   = 8;       // rolling chart window
+const DEG        = Math.PI/180;
+const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+const $=id=>document.getElementById(id);
+
+/* ------------------------------------------------------------------
+   Complete elliptic integral of the first kind, K(k), by the
+   arithmetic-geometric mean. Needed for the exact pendulum period:
+
+       T = 4·√(L/g)·K( sin(θ₀/2) )      versus      T₀ = 2π·√(L/g)
+
+   so the ratio T/T₀ = (2/π)·K(sin(θ₀/2)) depends on amplitude alone.
+   ------------------------------------------------------------------ */
+function ellipticK(k){
+  let a=1, b=Math.sqrt(Math.max(0,1-k*k));
+  for(let i=0;i<14;i++){ const na=(a+b)/2; b=Math.sqrt(a*b); a=na; }
+  return Math.PI/(2*a);
+}
+const periodRatio = amp => (2/Math.PI)*ellipticK(Math.sin(Math.abs(amp)/2));
+
+/* ==================================================================
+   PENDULUM
+   ================================================================== */
+class Pendulum{
+  constructor(key,L,angDeg,mass,color){
+    this.key=key; this.color=color;
+    this.L=L; this.mass=mass; this.theta0=angDeg*DEG;
+    this.enabled = key==='A';
+    this.reset();
+  }
+  reset(){
+    this.theta=this.theta0;
+    this.omega=0;
+    this.alpha=0;
+    this.prevTheta=this.theta0;
+    this.lastCross=null;      // simulated time of the last upward zero crossing
+    this.period=null;         // most recent measured full period
+    this.ampRun=Math.abs(this.theta0);   // amplitude accumulating this cycle
+    this.amp=Math.abs(this.theta0);      // amplitude of the last completed cycle
+    this.cycles=0;
+  }
+  /** Angular acceleration. Kept as a function so the integrator can
+      evaluate it twice per step. */
+  accel(theta,omega){
+    const restore = world.model==='sha' ? theta : Math.sin(theta);
+    return -(world.g/this.L)*restore - world.damp*omega;
+  }
+  /* ---- unit vectors in world space, y pointing UP ---- */
+  tHat(){ return {x: Math.cos(this.theta), y: Math.sin(this.theta)}; }   // increasing θ
+  rHat(){ return {x: Math.sin(this.theta), y:-Math.cos(this.theta)}; }   // pivot → bob
+
+  /** Linear velocity of the bob. Always purely tangential. */
+  vel(){
+    const t=this.tHat(), s=this.L*this.omega;
+    return {x:t.x*s, y:t.y*s};
+  }
+  /** Linear acceleration: tangential term plus the centripetal term. */
+  acc(){
+    const t=this.tHat(), r=this.rHat();
+    const at=this.L*this.alpha, ac=this.L*this.omega*this.omega;
+    return {x: t.x*at - r.x*ac, y: t.y*at - r.y*ac};
+  }
+  /* ---- forces acting on the bob ---- */
+  weight(){ return {x:0, y:-this.mass*world.g}; }
+  tensionMag(){ return this.mass*(world.g*Math.cos(this.theta) + this.L*this.omega*this.omega); }
+  tension(){
+    const r=this.rHat(), T=this.tensionMag();
+    return {x:-r.x*T, y:-r.y*T};                 // pulls back toward the pivot
+  }
+  dampForce(){
+    if(world.damp<=0) return {x:0,y:0};
+    const t=this.tHat(), f=-this.mass*world.damp*this.L*this.omega;
+    return {x:t.x*f, y:t.y*f};
+  }
+  netForce(){
+    const w=this.weight(), t=this.tension(), d=this.dampForce();
+    return {x:w.x+t.x+d.x, y:w.y+t.y+d.y};
+  }
+  /** Ideal small-angle period, and the exact period for this amplitude. */
+  T0(){ return world.g>0 ? 2*Math.PI*Math.sqrt(this.L/world.g) : null; }
+  Texact(){
+    const t0=this.T0();
+    if(t0===null) return null;
+    return world.model==='sha' ? t0 : t0*periodRatio(this.amp);
+  }
+  energy(){   // per unit mass, for the conservation test
+    return 0.5*this.L*this.L*this.omega*this.omega
+         + world.g*this.L*(1-Math.cos(this.theta));
+  }
+}
+
+/* ==================================================================
+   WORLD
+   ================================================================== */
+const world={
+  g:9.81, damp:0, model:'exact', frame:'xy',
+  showF:true, showV:false, showA:false,
+  running:true, speed:1, t:0
+};
+const A=new Pendulum('A',1.00,30,1,'#38BDF8');
+const B=new Pendulum('B',1.50,30,1,'#FB7185');
+const pends=[A,B];
+const live=()=>pends.filter(p=>p.enabled);
+const history=[];
+
+/* ==================================================================
+   INTEGRATION — velocity Verlet
+   ------------------------------------------------------------------
+   θ(t+Δt) = θ + ω·Δt + ½·α·Δt²
+   α'      = accel(θ(t+Δt), ω predicted)
+   ω(t+Δt) = ω + ½·(α + α')·Δt
+
+   Verlet is symplectic: the energy of an undamped oscillator stays
+   flat over thousands of cycles instead of creeping the way explicit
+   Euler does. That matters here because the whole point of the module
+   is measuring the period accurately. The damping term depends on ω,
+   so ω is predicted once with a forward step before the corrector —
+   accurate to the same order and still only two force evaluations.
+   ================================================================== */
+function step(dt){
+  for(const p of live()){
+    const a1=p.accel(p.theta,p.omega);
+    const thNew = p.theta + p.omega*dt + 0.5*a1*dt*dt;
+    const omPred = p.omega + a1*dt;
+    const a2=p.accel(thNew,omPred);
+
+    p.prevTheta = p.theta;
+    p.theta = thNew;
+    p.omega = p.omega + 0.5*(a1+a2)*dt;
+    p.alpha = a2;
+
+    p.ampRun=Math.max(p.ampRun, Math.abs(p.theta));
+
+    /* --- period from upward zero crossings, linearly interpolated --- */
+    if(p.prevTheta<0 && p.theta>=0){
+      const frac = p.theta!==p.prevTheta ? -p.prevTheta/(p.theta-p.prevTheta) : 0;
+      const tc = world.t + frac*dt;
+      if(p.lastCross!==null){
+        p.period = tc-p.lastCross;
+        p.amp = p.ampRun;
+        p.cycles++;
+      }
+      p.lastCross=tc;
+      p.ampRun=Math.abs(p.theta);
+    }
+  }
+  world.t+=dt;
+}
+
+/* ==================================================================
+   COMPONENT FRAME
+   Returns the two signed components of a world vector in whichever
+   frame the user has selected, plus the basis vectors so the canvas
+   can draw the parallelogram.
+   ================================================================== */
+function basis(p){
+  if(world.frame==='xy') return [{x:1,y:0},{x:0,y:1}];
+  const t=p.tHat(), r=p.rHat();
+  return [t,{x:-r.x,y:-r.y}];        // tangential, then inward radial
+}
+function components(p,v){
+  const [e1,e2]=basis(p);
+  return [v.x*e1.x+v.y*e1.y, v.x*e2.x+v.y*e2.y];
+}
+const frameLabels = () => world.frame==='xy' ? ['x','y'] : ['tangential','radial'];
+
+/* ==================================================================
+   CANVAS
+   ================================================================== */
+const stage=$('stage'), sctx=stage.getContext('2d');
+let DPR=1, SW=0, SH=0, PPM=200;
+
+function sizeStage(){
+  const r=stage.parentElement.getBoundingClientRect();
+  DPR=Math.min(window.devicePixelRatio||1,2);
+  SW=Math.max(320,r.width); SH=Math.max(260,r.height);
+  stage.width=SW*DPR; stage.height=SH*DPR;
+  sctx.setTransform(DPR,0,0,DPR,0,0);
+}
+/** Pixels per metre, chosen so the longest live thread always fits. */
+function fitScale(){
+  const maxL=Math.max(...live().map(p=>p.L), 0.2);
+  PPM=clamp((SH*0.66)/maxL, 24, 300);
+}
+function pivotOf(p){
+  const n=live().length;
+  const y=SH*0.14;
+  if(n<2) return {x:SW/2, y};
+  return {x: p.key==='A' ? SW*0.32 : SW*0.68, y};
+}
+const bobOf = p => {
+  const pv=pivotOf(p);
+  return {x: pv.x + p.L*PPM*Math.sin(p.theta),
+          y: pv.y + p.L*PPM*Math.cos(p.theta)};
+};
+
+/* ---------- arrow drawing. World vectors are y-up, so y flips. ---------- */
+function arrow(o,vx,vy,color,{dashed=false,width=2.2,label=null}={}){
+  const ex=o.x+vx, ey=o.y-vy;                  // flip to screen
+  const dx=ex-o.x, dy=ey-o.y, L=Math.hypot(dx,dy);
+  if(L<7) return;
+  const ux=dx/L, uy=dy/L;
+  const head=Math.min(11,L*0.34), hw=head*0.44;
+  const tipx=ex-ux*head, tipy=ey-uy*head;
+
+  sctx.save();
+  sctx.strokeStyle=color; sctx.fillStyle=color;
+  sctx.lineWidth=width; sctx.lineCap='round';
+  if(dashed) sctx.setLineDash([5,4]);
+  sctx.beginPath(); sctx.moveTo(o.x,o.y); sctx.lineTo(tipx,tipy); sctx.stroke();
+  sctx.setLineDash([]);
+  sctx.beginPath();
+  sctx.moveTo(ex,ey);
+  sctx.lineTo(tipx-uy*hw, tipy+ux*hw);
+  sctx.lineTo(tipx+uy*hw, tipy-ux*hw);
+  sctx.closePath(); sctx.fill();
+  if(label){
+    sctx.font='600 11px '+getComputedStyle(document.body).fontFamily;
+    sctx.textAlign='center'; sctx.textBaseline='middle';
+    sctx.fillText(label, ex+ux*11, ey+uy*11);
+  }
+  sctx.restore();
+}
+function ghostLine(a,b,color){
+  sctx.save();
+  sctx.strokeStyle=color; sctx.globalAlpha=0.5; sctx.lineWidth=1.2;
+  sctx.setLineDash([4,4]);
+  sctx.beginPath(); sctx.moveTo(a.x,a.y); sctx.lineTo(b.x,b.y); sctx.stroke();
+  sctx.restore();
+}
+/**
+ * Draws a resultant plus its two addends as a parallelogram: the two
+ * dashed arrows are the parts, the solid arrow is the sum, and the two
+ * faint dashed lines close the figure.
+ */
+function parallelogram(origin,p1,p2,color,labels){
+  const sum={x:p1.x+p2.x, y:p1.y+p2.y};
+  const s=v=>({x:origin.x+v.x, y:origin.y-v.y});
+  ghostLine(s(p1), s(sum), color);
+  ghostLine(s(p2), s(sum), color);
+  arrow(origin,p1.x,p1.y,color,{dashed:true,width:1.8,label:labels&&labels[0]});
+  arrow(origin,p2.x,p2.y,color,{dashed:true,width:1.8,label:labels&&labels[1]});
+  arrow(origin,sum.x,sum.y,color,{width:2.6,label:labels&&labels[2]});
+}
+
+/* ---------- smoothed autoscaling so arrows stay a sane length ---------- */
+const vscale={force:1,vel:1,acc:1};
+function updateScales(){
+  const target=78;
+  const mag=(v)=>Math.hypot(v.x,v.y);
+  let fmax=0,vmax=0,amax=0;
+  for(const p of live()){
+    fmax=Math.max(fmax, mag(p.weight()), mag(p.tension()));
+    vmax=Math.max(vmax, mag(p.vel()));
+    amax=Math.max(amax, mag(p.acc()), world.g);
+  }
+  const ease=(cur,want)=>cur+(want-cur)*0.08;
+  vscale.force=ease(vscale.force, target/Math.max(fmax,0.4));
+  vscale.vel  =ease(vscale.vel,   target/Math.max(vmax,0.4));
+  vscale.acc  =ease(vscale.acc,   target/Math.max(amax,0.4));
+}
+
+/* ==================================================================
+   STAGE RENDER
+   ================================================================== */
+function drawStage(){
+  sctx.clearRect(0,0,SW,SH);
+  fitScale();
+  updateScales();
+  for(const p of live()) drawPendulum(p);
+}
+
+function drawPendulum(p){
+  const pv=pivotOf(p), bob=bobOf(p);
+  const R=p.L*PPM;
+  const bobR=clamp(7+Math.cbrt(p.mass)*5, 8, 22);
+
+  /* swing envelope */
+  const a0=Math.max(Math.abs(p.theta0), p.amp);
+  sctx.save();
+  sctx.strokeStyle=p.color; sctx.globalAlpha=0.16; sctx.lineWidth=1.4;
+  sctx.setLineDash([3,5]);
+  sctx.beginPath();
+  sctx.arc(pv.x,pv.y,R, Math.PI/2-a0, Math.PI/2+a0);
+  sctx.stroke();
+  sctx.restore();
+
+  /* vertical reference through the pivot */
+  sctx.save();
+  sctx.strokeStyle='#2B313B'; sctx.lineWidth=1; sctx.setLineDash([2,5]);
+  sctx.beginPath(); sctx.moveTo(pv.x,pv.y); sctx.lineTo(pv.x,pv.y+R+30); sctx.stroke();
+  sctx.restore();
+
+  /* angle arc */
+  if(Math.abs(p.theta)>0.02){
+    const ar=Math.min(46, R*0.4);
+    sctx.save();
+    sctx.strokeStyle=p.color; sctx.globalAlpha=0.7; sctx.lineWidth=1.4;
+    sctx.beginPath();
+    sctx.arc(pv.x,pv.y,ar, Math.PI/2, Math.PI/2-p.theta, p.theta>0);
+    sctx.stroke();
+    sctx.globalAlpha=1;
+    sctx.fillStyle=p.color;
+    sctx.font='11px '+getComputedStyle(document.body).fontFamily;
+    sctx.textAlign='center'; sctx.textBaseline='middle';
+    const mid=Math.PI/2-p.theta/2;
+    sctx.fillText((p.theta/DEG).toFixed(0)+'\u00B0',
+      pv.x+Math.cos(mid)*(ar+15), pv.y-Math.sin(mid)*(ar+15));
+    sctx.restore();
+  }
+
+  /* thread with a length dimension */
+  sctx.save();
+  sctx.strokeStyle=p.color; sctx.lineWidth=1.7; sctx.globalAlpha=0.9;
+  sctx.beginPath(); sctx.moveTo(pv.x,pv.y); sctx.lineTo(bob.x,bob.y); sctx.stroke();
+  sctx.restore();
+
+  const mx=(pv.x+bob.x)/2, my=(pv.y+bob.y)/2;
+  const nx=(bob.y-pv.y)/R, ny=-(bob.x-pv.x)/R;
+  sctx.save();
+  sctx.fillStyle='#5C6470';
+  sctx.font='10px '+getComputedStyle(document.body).fontFamily;
+  sctx.textAlign='center'; sctx.textBaseline='middle';
+  sctx.fillText('L = '+p.L.toFixed(2)+' m', mx+nx*16, my+ny*16);
+  sctx.restore();
+
+  /* pivot */
+  sctx.fillStyle='#5C6470';
+  sctx.beginPath(); sctx.arc(pv.x,pv.y,3.6,0,6.2832); sctx.fill();
+  sctx.strokeStyle='#3C4553'; sctx.lineWidth=1.4;
+  sctx.beginPath(); sctx.moveTo(pv.x-16,pv.y); sctx.lineTo(pv.x+16,pv.y); sctx.stroke();
+
+  /* label */
+  sctx.save();
+  sctx.fillStyle=p.color;
+  sctx.font='600 12px '+getComputedStyle(document.body).fontFamily;
+  sctx.textAlign='center';
+  sctx.fillText(p.key, pv.x, pv.y-14);
+  sctx.restore();
+
+  /* vectors */
+  const [e1,e2]=basis(p), lab=frameLabels();
+  const proj=(v,e,s)=>{const c=v.x*e.x+v.y*e.y; return {x:e.x*c*s, y:e.y*c*s};};
+
+  if(world.showF){
+    const s=vscale.force;
+    const w=p.weight(), T=p.tension();
+    parallelogram(bob,{x:w.x*s,y:w.y*s},{x:T.x*s,y:T.y*s},CSS.force,null);
+    if(world.damp>0){
+      const d=p.dampForce();
+      arrow(bob,d.x*s,d.y*s,CSS.force,{dashed:true,width:1.6});
+    }
+  }
+  if(world.showV){
+    const s=vscale.vel, v=p.vel();
+    parallelogram(bob, proj(v,e1,s), proj(v,e2,s), CSS.vel, null);
+  }
+  if(world.showA){
+    const s=vscale.acc, a=p.acc();
+    parallelogram(bob, proj(a,e1,s), proj(a,e2,s), CSS.acc, null);
+  }
+
+  /* bob on top of the arrows */
+  sctx.beginPath(); sctx.arc(bob.x,bob.y,bobR,0,6.2832);
+  sctx.fillStyle=p.color+'44'; sctx.fill();
+  sctx.strokeStyle=p.color; sctx.lineWidth=2; sctx.stroke();
+}
+
+/* resolved CSS colours, read once */
+const CSS={};
+function readColors(){
+  const cs=getComputedStyle(document.documentElement);
+  for(const k of ['force','vel','acc','c1','c2','edge','faint','dim','text'])
+    CSS[k]=cs.getPropertyValue('--'+k).trim();
+}
+
+/* ==================================================================
+   CHARTS
+   ================================================================== */
+class Chart{
+  constructor(id,series,unit){
+    this.cv=$(id); this.ctx=this.cv.getContext('2d');
+    this.series=series; this.unit=unit; this.lo=-1; this.hi=1;
+  }
+  size(){
+    const r=this.cv.getBoundingClientRect();
+    this.w=r.width; this.h=r.height;
+    this.cv.width=r.width*DPR; this.cv.height=r.height*DPR;
+    this.ctx.setTransform(DPR,0,0,DPR,0,0);
+  }
+  draw(data,t0,t1){
+    const c=this.ctx,w=this.w,h=this.h,L=44,R=7,T=8,Bm=18;
+    c.clearRect(0,0,w,h);
+    c.strokeStyle=CSS.edge; c.lineWidth=1;
+    c.strokeRect(L+.5,T+.5,w-L-R-1,h-T-Bm-1);
+
+    const active=this.series.filter(s=>s.on());
+    let mn=Infinity,mx=-Infinity;
+    for(const s of data) for(const sr of active){
+      const v=s[sr.key];
+      if(v==null||!isFinite(v)) continue;
+      if(v<mn)mn=v; if(v>mx)mx=v;
+    }
+    if(!isFinite(mn)){mn=-1;mx=1;}
+    const pad=Math.max((mx-mn)*0.16,0.4);
+    mn-=pad; mx+=pad;
+    this.lo+=(mn-this.lo)*0.12; this.hi+=(mx-this.hi)*0.12;
+    const lo=this.lo,hi=this.hi;
+    const X=t=>L+((t-t0)/((t1-t0)||1))*(w-L-R);
+    const Y=v=>T+(1-(v-lo)/((hi-lo)||1))*(h-T-Bm);
+
+    c.font='9px '+CSS_MONO; c.textAlign='right'; c.textBaseline='middle';
+    for(let i=0;i<=3;i++){
+      const v=lo+(hi-lo)*i/3, y=Y(v);
+      c.strokeStyle='#22272F'; c.beginPath(); c.moveTo(L,y); c.lineTo(w-R,y); c.stroke();
+      c.fillStyle=CSS.faint;
+      c.fillText(v.toFixed(Math.abs(hi-lo)<4?1:0), L-5,y);
+    }
+    if(lo<0&&hi>0){
+      const y=Y(0);
+      c.strokeStyle=CSS.edge; c.setLineDash([3,3]);
+      c.beginPath(); c.moveTo(L,y); c.lineTo(w-R,y); c.stroke(); c.setLineDash([]);
+    }
+    c.textAlign='center'; c.textBaseline='top'; c.fillStyle=CSS.faint;
+    c.fillText(t0.toFixed(1)+'s',L+13,h-Bm+4);
+    c.fillText(t1.toFixed(1)+'s',w-R-13,h-Bm+4);
+    c.save(); c.translate(10,(h-Bm+T)/2); c.rotate(-Math.PI/2);
+    c.textAlign='center'; c.textBaseline='middle'; c.fillStyle=CSS.faint;
+    c.fillText(this.unit,0,0); c.restore();
+
+    if(data.length<2) return;
+    c.save();
+    c.beginPath(); c.rect(L,T,w-L-R,h-T-Bm); c.clip();
+    for(const sr of active){
+      c.strokeStyle=sr.color; c.lineWidth=sr.dash?1.4:1.8;
+      c.setLineDash(sr.dash?[4,3]:[]);
+      c.lineJoin='round'; c.beginPath();
+      let started=false;
+      for(const s of data){
+        const v=s[sr.key];
+        if(v==null||!isFinite(v)){started=false;continue;}
+        const x=X(s.t),y=Y(v);
+        started?c.lineTo(x,y):c.moveTo(x,y); started=true;
+      }
+      c.stroke();
+    }
+    c.setLineDash([]); c.restore();
+  }
+}
+const CSS_MONO='ui-monospace,SFMono-Regular,Menlo,Consolas,monospace';
+
+let chartV, chartA;
+function buildCharts(){
+  const onA=()=>A.enabled, onB=()=>B.enabled;
+  chartV=new Chart('cV',[
+    {key:'Av1',color:CSS.c1,dash:false,on:onA},
+    {key:'Av2',color:CSS.c2,dash:false,on:onA},
+    {key:'Bv1',color:CSS.c1,dash:true, on:onB},
+    {key:'Bv2',color:CSS.c2,dash:true, on:onB}
+  ],'m/s');
+  chartA=new Chart('cA',[
+    {key:'Aa1',color:CSS.c1,dash:false,on:onA},
+    {key:'Aa2',color:CSS.c2,dash:false,on:onA},
+    {key:'Ba1',color:CSS.c1,dash:true, on:onB},
+    {key:'Ba2',color:CSS.c2,dash:true, on:onB}
+  ],'m/s²');
+}
+function sizeCharts(){
+  chartV.size(); chartA.size();
+  const r=$('cP').getBoundingClientRect();
+  $('cP').width=r.width*DPR; $('cP').height=r.height*DPR;
+  $('cP').getContext('2d').setTransform(DPR,0,0,DPR,0,0);
+  pw=r.width; ph=r.height;
+}
+let pw=0,ph=0;
+
+function updateLegends(){
+  const [l1,l2]=frameLabels();
+  const html=(pre)=>`
+    <span><i style="border-color:${CSS.c1}"></i>${pre}<sub>${l1}</sub> A</span>
+    <span><i style="border-color:${CSS.c2}"></i>${pre}<sub>${l2}</sub> A</span>
+    ${B.enabled?`<span><i class="d" style="border-color:${CSS.c1}"></i>${pre}<sub>${l1}</sub> B</span>
+    <span><i class="d" style="border-color:${CSS.c2}"></i>${pre}<sub>${l2}</sub> B</span>`:''}`;
+  $('legV').innerHTML=html('v');
+  $('legA').innerHTML=html('a');
+}
+
+/* ------------------------------------------------------------------
+   PERIOD PANEL
+   T/T₀ against amplitude. The flat dashed line at 1 is what the
+   small-angle model predicts; the rising curve is the truth. The live
+   markers show where each pendulum currently sits on that curve.
+   ------------------------------------------------------------------ */
+function drawPeriod(){
+  const c=$('cP').getContext('2d');
+  const w=pw,h=ph,L=42,R=10,T=10,Bm=22;
+  c.clearRect(0,0,w,h);
+
+  const xMax=170, yLo=0.98, yHi=2.45;
+  const X=d=>L+(d/xMax)*(w-L-R);
+  const Y=r=>T+(1-(r-yLo)/(yHi-yLo))*(h-T-Bm);
+
+  /* small-angle regime shading — below 15° the error is under 0.5% */
+  c.fillStyle='rgba(240,162,2,0.07)';
+  c.fillRect(L,T,X(15)-L,h-T-Bm);
+
+  c.strokeStyle=CSS.edge; c.lineWidth=1;
+  c.strokeRect(L+.5,T+.5,w-L-R-1,h-T-Bm-1);
+
+  c.font='9px '+CSS_MONO; c.fillStyle=CSS.faint;
+  c.textAlign='right'; c.textBaseline='middle';
+  for(const r of [1.0,1.4,1.8,2.2]){
+    const y=Y(r);
+    c.strokeStyle='#22272F'; c.beginPath(); c.moveTo(L,y); c.lineTo(w-R,y); c.stroke();
+    c.fillText(r.toFixed(1),L-5,y);
+  }
+  c.textAlign='center'; c.textBaseline='top';
+  for(const d of [0,45,90,135,170]) c.fillText(d+'\u00B0',X(d),h-Bm+5);
+
+  /* small-angle prediction */
+  c.strokeStyle=CSS.faint; c.lineWidth=1.4; c.setLineDash([4,3]);
+  c.beginPath(); c.moveTo(L,Y(1)); c.lineTo(w-R,Y(1)); c.stroke(); c.setLineDash([]);
+
+  /* exact curve */
+  c.strokeStyle=CSS.dim; c.lineWidth=1.9; c.beginPath();
+  for(let d=0;d<=xMax;d+=2){
+    const r=periodRatio(d*DEG), x=X(d), y=Y(r);
+    d?c.lineTo(x,y):c.moveTo(x,y);
+  }
+  c.stroke();
+
+  /* live markers */
+  for(const p of live()){
+    const d=clamp(Math.abs(p.amp)/DEG,0,xMax);
+    const r=world.model==='sha'?1:periodRatio(d*DEG);
+    const x=X(d), y=Y(r);
+    c.save();
+    c.strokeStyle=p.color; c.globalAlpha=.45; c.lineWidth=1; c.setLineDash([3,3]);
+    c.beginPath(); c.moveTo(x,h-Bm); c.lineTo(x,y); c.stroke();
+    c.restore();
+    c.fillStyle=p.color; c.strokeStyle='#0F1116'; c.lineWidth=2;
+    c.beginPath(); c.arc(x,y,4.6,0,6.2832); c.fill(); c.stroke();
+  }
+
+  c.save();
+  c.translate(11,(h-Bm+T)/2); c.rotate(-Math.PI/2);
+  c.textAlign='center'; c.textBaseline='middle';
+  c.fillStyle=CSS.faint; c.font='9px '+CSS_MONO;
+  c.fillText('T / T\u2080',0,0); c.restore();
+  c.textAlign='center'; c.fillStyle=CSS.faint;
+  c.fillText('amplitude',L+(w-L-R)/2,h-8);
+}
+
+function updatePeriodTable(){
+  const rows=live().map(p=>{
+    const t0=p.T0(), tx=p.Texact(), meas=p.period;
+    const err = (meas!=null&&t0) ? ((meas-t0)/t0*100) : null;
+    return `<tr>
+      <td><span class="sw" style="background:${p.color}"></span>${p.key}</td>
+      <td>${meas!=null?meas.toFixed(3):'\u2014'}</td>
+      <td>${t0!=null?t0.toFixed(3):'\u2014'}</td>
+      <td>${err!=null?(err>0?'+':'')+err.toFixed(1)+'%':'\u2014'}</td>
+    </tr>`;
+  }).join('');
+  $('ptable').innerHTML=
+    `<tr><th>&nbsp;</th><th>measured</th><th>2&pi;&radic;(L/g)</th><th>error</th></tr>${rows}`;
+
+  const p=live()[0];
+  if(!p||world.g<=0){ $('pnote').textContent='With no gravity there is no restoring force, so the pendulum never returns.'; return; }
+  const d=Math.abs(p.amp)/DEG;
+  $('pnote').textContent = world.model==='sha'
+    ? 'The small-angle model has no amplitude dependence at all — its period is constant by construction.'
+    : d<15 ? `At ${d.toFixed(0)}\u00B0 the ideal formula is within half a percent. This is the regime where "simple harmonic" is honest.`
+           : `At ${d.toFixed(0)}\u00B0 the real period runs ${((periodRatio(d*DEG)-1)*100).toFixed(1)}% longer than 2\u03C0\u221A(L/g).`;
+}
+
+/* ==================================================================
+   VECTOR KEY
+   ================================================================== */
+function updateKey(){
+  const [l1,l2]=frameLabels();
+  const parts=[];
+  if(world.showF) parts.push(
+    `<div class="k"><i style="background:${CSS.force}"></i>weight + tension &rarr; net force</div>`);
+  if(world.showV) parts.push(
+    `<div class="k"><i style="background:${CSS.vel}"></i>velocity (${l1}, ${l2})</div>`);
+  if(world.showA) parts.push(
+    `<div class="k"><i style="background:${CSS.acc}"></i>acceleration (${l1}, ${l2})</div>`);
+  parts.push(`<div class="k" style="color:${CSS.faint};margin-top:3px">dashed = components</div>`);
+  $('vkey').innerHTML=parts.join('');
+  $('vkey').hidden = !(world.showF||world.showV||world.showA);
+}
+
+/* ==================================================================
+   MAIN LOOP
+   ================================================================== */
+let last=performance.now(), acc=0, sampleAcc=0;
+function frame(now){
+  let dt=(now-last)/1000; last=now;
+  if(dt>0.25) dt=0.25;
+
+  if(world.running){
+    acc += dt*world.speed;
+    let n=0;
+    while(acc>=FIXED_DT && n<MAX_STEPS){ step(FIXED_DT); acc-=FIXED_DT; n++; }
+    if(n===MAX_STEPS) acc=0;
+
+    sampleAcc += dt;
+    if(sampleAcc>=1/80){
+      sampleAcc=0;
+      const s={t:world.t};
+      for(const p of pends){
+        if(!p.enabled){ continue; }
+        const [v1,v2]=components(p,p.vel());
+        const [a1,a2]=components(p,p.acc());
+        s[p.key+'v1']=v1; s[p.key+'v2']=v2;
+        s[p.key+'a1']=a1; s[p.key+'a2']=a2;
+      }
+      history.push(s);
+      while(history.length && history[0].t < world.t-HIST_SEC-1) history.shift();
+    }
+  }
+
+  drawStage();
+  const t1=world.t, t0=Math.max(0,t1-HIST_SEC);
+  const win=history.filter(s=>s.t>=t0);
+  chartV.draw(win,t0,t1);
+  chartA.draw(win,t0,t1);
+  drawPeriod();
+  updatePeriodTable();
+  $('chipT').textContent='t = '+world.t.toFixed(2)+' s';
+  requestAnimationFrame(frame);
+}
+
+/* ==================================================================
+   CONTROLS
+   ================================================================== */
+function releaseAll(){
+  for(const p of pends) p.reset();
+  history.length=0; world.t=0; acc=0;
+  world.running=true; syncPlay();
+}
+function syncPlay(){
+  const b=$('play');
+  b.textContent=world.running?'Pause':'Play';
+  b.classList.toggle('accent',world.running);
+}
+$('play').addEventListener('click',()=>{ world.running=!world.running; syncPlay(); });
+$('release').addEventListener('click',releaseAll);
+
+/** Slider that edits a property of one pendulum and re-releases,
+    because changing the geometry mid-swing has no clean meaning. */
+function bindPend(id,valId,p,prop,fmt,unit,transform){
+  $(id).addEventListener('input',e=>{
+    const raw=parseFloat(e.target.value);
+    p[prop]=transform?transform(raw):raw;
+    $(valId).innerHTML=fmt(raw)+(unit?`<span class="u">${unit}</span>`:'');
+    releaseAll();
+  });
+}
+bindPend('aL','vaL',A,'L',v=>v.toFixed(2),'m');
+bindPend('aA','vaA',A,'theta0',v=>v.toFixed(0),'deg',v=>v*DEG);
+bindPend('aM','vaM',A,'mass',v=>v.toFixed(1),'kg');
+bindPend('bL','vbL',B,'L',v=>v.toFixed(2),'m');
+bindPend('bA','vbA',B,'theta0',v=>v.toFixed(0),'deg',v=>v*DEG);
+bindPend('bM','vbM',B,'mass',v=>v.toFixed(1),'kg');
+
+$('bOn').addEventListener('click',()=>{
+  B.enabled=!B.enabled;
+  $('bOn').classList.toggle('on',B.enabled);
+  $('bOn').textContent=B.enabled?'Comparing two pendulums':'Compare a second pendulum';
+  $('bBlock').hidden=!B.enabled;
+  updateLegends();
+  releaseAll();
+});
+
+/* gravity — changing g mid-swing is interesting, so it does not reset */
+$('g').addEventListener('input',e=>{
+  world.g=parseFloat(e.target.value);
+  $('vg').innerHTML=world.g.toFixed(2)+'<span class="u">m/s²</span>';
+  $('planet').value='';
+});
+$('planet').addEventListener('change',e=>{
+  const g=parseFloat(e.target.value);
+  if(isNaN(g)) return;
+  world.g=g;
+  $('g').value=Math.min(g,30);
+  $('vg').innerHTML=g.toFixed(2)+'<span class="u">m/s²</span>';
+});
+$('damp').addEventListener('input',e=>{
+  world.damp=parseFloat(e.target.value);
+  $('vdamp').innerHTML=world.damp.toFixed(2)+'<span class="u">1/s</span>';
+});
+$('speed').addEventListener('input',e=>{
+  world.speed=parseFloat(e.target.value);
+  $('chipSpeed').textContent='speed '+world.speed.toFixed(1)+'\u00D7';
+});
+
+/* the three vector switches */
+function bindToggle(id,key){
+  $(id).addEventListener('click',()=>{
+    world[key]=!world[key];
+    $(id).classList.toggle('on',world[key]);
+    updateKey();
+  });
+}
+bindToggle('tF','showF'); bindToggle('tV','showV'); bindToggle('tA','showA');
+
+/* frame + model segmented controls */
+$('frameSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  world.frame=b.dataset.frame;
+  [...$('frameSeg').children].forEach(x=>x.classList.toggle('on',x===b));
+  $('frameHint').textContent = world.frame==='xy'
+    ? 'Horizontal and vertical. Switch to tangent / radial to separate the restoring force from the centripetal pull.'
+    : 'Tangential is the restoring direction, radial points along the thread — this is where a\u2099 = v\u00B2/L shows up.';
+  history.length=0;
+  updateLegends(); updateKey();
+});
+$('modelSeg').addEventListener('click',e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  world.model=b.dataset.model;
+  [...$('modelSeg').children].forEach(x=>x.classList.toggle('on',x===b));
+  releaseAll();
+});
+
+/* ==================================================================
+   BOOT
+   ================================================================== */
+function resizeAll(){ sizeStage(); sizeCharts(); }
+addEventListener('resize',resizeAll);
+addEventListener('keydown',e=>{
+  if(e.key===' '){ e.preventDefault(); world.running=!world.running; syncPlay(); }
+  if(e.key==='r'||e.key==='R') releaseAll();
+});
+
+readColors();
+buildCharts();
+sizeStage(); sizeCharts();
+updateLegends(); updateKey(); syncPlay();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
