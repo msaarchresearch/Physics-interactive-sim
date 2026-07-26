@@ -10,7 +10,7 @@ Each module is a standalone HTML file. No installation. No login. Open in any br
 
 | Module | Topic | Link |
 |--------|-------|-------|
-| Vector Bench | Vector addition — triangle law, parallelogram, component resolution | [Open](vectors/index.html) |
+| Vector Bench | Vector addition — triangle law, parallelogram, component resolution | [Open](vectors) |
 
 *More modules coming: statics, structural loads, fluid flow, thermodynamics, light and shadow.*
 
