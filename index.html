@@ -273,13 +273,58 @@
     <div class="arrow" aria-hidden="true">&rarr;</div>
   </a>
 
+  <a class="entry" href="motion/">
+    <div class="thumb">
+      <!-- projectile arc with a bounce -->
+      <svg viewBox="0 0 108 88" xmlns="http://www.w3.org/2000/svg">
+        <g stroke-width="1" stroke="#E3E6E2">
+          <path d="M18 0v88M38 0v88M58 0v88M78 0v88M98 0v88M0 12h108M0 32h108M0 52h108M0 72h108"/>
+        </g>
+        <line x1="0" y1="74" x2="108" y2="74" stroke="#C6CDC7" stroke-width="1.4"/>
+        <!-- ramp obstacle -->
+        <path d="M62 74 78 74 70 60z" fill="#C6CDC7" fill-opacity=".5" stroke="#8C948E" stroke-width="1"/>
+        <!-- trajectory -->
+        <path d="M10 70 Q30 14 52 62 Q60 74 68 58" fill="none" stroke="#F0A202"
+              stroke-width="2" stroke-linecap="round"/>
+        <!-- velocity + accel arrows at apex -->
+        <line x1="31" y1="26" x2="45" y2="26" stroke="#2D6BE4" stroke-width="1.8"/>
+        <polygon points="49,26 43,23 43,29" fill="#2D6BE4"/>
+        <line x1="31" y1="26" x2="31" y2="40" stroke="#E0452B" stroke-width="1.8"/>
+        <polygon points="31,44 28,38 34,38" fill="#E0452B"/>
+        <!-- body -->
+        <circle cx="31" cy="26" r="4.5" fill="#F0A202" fill-opacity=".35"
+                stroke="#F0A202" stroke-width="1.6"/>
+      </svg>
+    </div>
+
+    <div class="entry-body">
+      <div class="entry-num">02</div>
+      <h2>Motion Lab</h2>
+      <p>
+        A rigid-body sandbox. Place circles, triangles and rectangles, then
+        launch one of them under adjustable gravity, friction and air
+        resistance. Displacement, velocity and acceleration plot in real time
+        as it bounces off the obstacles you built.
+      </p>
+      <div class="tags">
+        <span class="tag">projectile motion</span>
+        <span class="tag">collisions</span>
+        <span class="tag">friction</span>
+        <span class="tag">drag</span>
+        <span class="tag">planetary gravity</span>
+      </div>
+    </div>
+
+    <div class="arrow" aria-hidden="true">&rarr;</div>
+  </a>
+
   <!-- ============ COMING SOON ============ -->
   <div class="section-label">In progress</div>
 
   <div class="upcoming">
-    More simulations are on the way — covering forces and equilibrium, motion,
-    waves, and structural behaviour. Check back, or watch the repository for
-    updates.
+    More simulations are on the way — covering equilibrium and structural
+    behaviour, waves, thermal transfer, and light and shadow. Check back, or
+    watch the repository for updates.
   </div>
 
   <!-- ============ FOOTER ============ -->
