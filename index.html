@@ -101,7 +101,7 @@
     color: inherit;
   }
 
-  @media (prefers-reduced-: no-preference) {
+  @media (prefers-reduced-motion: no-preference) {
     .entry { transition: border-color 160ms ease, transform 160ms ease; }
   }
 
@@ -312,6 +312,49 @@
         <span class="tag">friction</span>
         <span class="tag">drag</span>
         <span class="tag">planetary gravity</span>
+      </div>
+    </div>
+
+    <div class="arrow" aria-hidden="true">&rarr;</div>
+  </a>
+
+  <!-- PENDULUM ENTRY ADDED HERE -->
+  <a class="entry" href="pendulum/">
+    <div class="thumb">
+      <!-- pendulum arc with vectors -->
+      <svg viewBox="0 0 108 88" xmlns="http://www.w3.org/2000/svg">
+        <g stroke-width="1" stroke="#E3E6E2">
+          <path d="M18 0v88M38 0v88M58 0v88M78 0v88M98 0v88M0 12h108M0 32h108M0 52h108M0 72h108"/>
+        </g>
+        <!-- pivot line -->
+        <line x1="34" y1="12" x2="74" y2="12" stroke="#C6CDC7" stroke-width="1.4"/>
+        <!-- motion arc -->
+        <path d="M26 56 Q54 72 82 56" fill="none" stroke="#C6CDC7" stroke-width="1" stroke-dasharray="2 2"/>
+        <!-- string -->
+        <line x1="54" y1="12" x2="75" y2="52" stroke="#F0A202" stroke-width="2" stroke-linecap="round"/>
+        <!-- velocity vector -->
+        <line x1="75" y1="52" x2="88" y2="38" stroke="#2D6BE4" stroke-width="1.8"/>
+        <polygon points="91,35 84,37 89,41" fill="#2D6BE4"/>
+        <!-- force vector (gravity) -->
+        <line x1="75" y1="52" x2="75" y2="70" stroke="#E0452B" stroke-width="1.8"/>
+        <polygon points="75,74 72,68 78,68" fill="#E0452B"/>
+        <!-- bob -->
+        <circle cx="75" cy="52" r="5" fill="#F0A202" fill-opacity=".35" stroke="#F0A202" stroke-width="1.6"/>
+        <circle cx="54" cy="12" r="2.5" fill="#C6CDC7" />
+      </svg>
+    </div>
+
+    <div class="entry-body">
+      <div class="entry-num">03</div>
+      <h2>Harmonic Pendulum</h2>
+      <p>
+        Experiment with simple harmonic motion using one or two pendulums simultaneously. Adjust thread lengths and toggle real-time visualizations for force, velocity, and acceleration vectors alongside live Cartesian kinematic graphs.
+      </p>
+      <div class="tags">
+        <span class="tag">simple harmonic motion</span>
+        <span class="tag">kinematics</span>
+        <span class="tag">vectors</span>
+        <span class="tag">numerical integration</span>
       </div>
     </div>
 
