@@ -1,0 +1,870 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vector Bench &middot; Interactive vector addition</title>
+<style>
+  html, body { margin:0; padding:0; background:#15171C; min-height:100%; }
+  #root { min-height:100vh; }
+  noscript { color:#E9ECF0; font-family:system-ui,sans-serif; display:block; padding:40px; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<noscript>This page needs JavaScript enabled in your browser.</noscript>
+
+<script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+
+<script type="text/babel" data-type="module">
+const { useState, useRef, useMemo, useCallback, useEffect } = React;
+
+/* ------------------------------------------------------------------ */
+/*  Tokens                                                             */
+/* ------------------------------------------------------------------ */
+
+const INK = {
+  ground: "#15171C",
+  panel: "#1B1F26",
+  edge: "#2B313B",
+  paper: "#FBFAF7",
+  grid: "#E3E6E2",
+  gridMajor: "#C6CDC7",
+  axis: "#8C948E",
+  text: "#E9ECF0",
+  dim: "#949CA8",
+  faint: "#5C6470",
+  sum: "#F0A202",
+};
+
+const VCOLORS = ["#E0452B", "#2D6BE4", "#0F9D77", "#8B5CF6"];
+const NAMES = ["A", "B", "C", "D"];
+
+const VB = { w: 700, h: 540 };
+const ORIGIN = { x: 150, y: 410 };
+const SCALE = 2.55;
+const MAX_MAG = 100;
+
+/* ------------------------------------------------------------------ */
+/*  Math                                                               */
+/* ------------------------------------------------------------------ */
+
+const rad = (d) => (d * Math.PI) / 180;
+const deg = (r) => (r * 180) / Math.PI;
+const norm360 = (a) => ((a % 360) + 360) % 360;
+
+const polar = (mag, angle) => ({
+  x: mag * Math.cos(rad(angle)),
+  y: mag * Math.sin(rad(angle)),
+});
+
+const toScreen = (p) => ({
+  x: ORIGIN.x + p.x * SCALE,
+  y: ORIGIN.y - p.y * SCALE,
+});
+
+const fmt = (n, d = 1) => n.toFixed(d);
+
+/* ------------------------------------------------------------------ */
+/*  SVG pieces                                                         */
+/* ------------------------------------------------------------------ */
+
+function Arrow({ from, to, color, width = 2.6, dashed = false, opacity = 1 }) {
+  const a = toScreen(from);
+  const b = toScreen(to);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return null;
+
+  const head = Math.min(13, len * 0.4);
+  const ux = dx / len;
+  const uy = dy / len;
+  const bx = b.x - ux * head;
+  const by = b.y - uy * head;
+  const px = -uy;
+  const py = ux;
+  const half = head * 0.42;
+
+  return (
+    <g opacity={opacity}>
+      <line
+        x1={a.x}
+        y1={a.y}
+        x2={bx}
+        y2={by}
+        stroke={color}
+        strokeWidth={width}
+        strokeLinecap="round"
+        strokeDasharray={dashed ? "7 6" : undefined}
+      />
+      <polygon
+        points={`${b.x},${b.y} ${bx + px * half},${by + py * half} ${
+          bx - px * half
+        },${by - py * half}`}
+        fill={color}
+      />
+    </g>
+  );
+}
+
+function AngleArc({ angle, radius = 40, color }) {
+  const a = norm360(angle);
+  if (a < 3) return null;
+  const large = a > 180 ? 1 : 0;
+  const end = {
+    x: ORIGIN.x + radius * Math.cos(rad(a)),
+    y: ORIGIN.y - radius * Math.sin(rad(a)),
+  };
+  const mid = rad(a / 2);
+  const lx = ORIGIN.x + (radius + 16) * Math.cos(mid);
+  const ly = ORIGIN.y - (radius + 16) * Math.sin(mid);
+
+  return (
+    <g>
+      <path
+        d={`M ${ORIGIN.x + radius} ${ORIGIN.y} A ${radius} ${radius} 0 ${large} 0 ${end.x} ${end.y}`}
+        fill="none"
+        stroke={color}
+        strokeWidth="1.4"
+        opacity="0.75"
+      />
+      <text
+        x={lx}
+        y={ly}
+        fill={color}
+        fontSize="13"
+        fontFamily="'IBM Plex Mono', monospace"
+        textAnchor="middle"
+        dominantBaseline="middle"
+      >
+        {fmt(a, 0)}°
+      </text>
+    </g>
+  );
+}
+
+function Grid() {
+  const lines = [];
+  const step = 10 * SCALE;
+
+  for (let x = ORIGIN.x % step; x < VB.w; x += step) {
+    const units = Math.round((x - ORIGIN.x) / SCALE);
+    const major = units % 50 === 0;
+    lines.push(
+      <line
+        key={`v${x}`}
+        x1={x}
+        y1="0"
+        x2={x}
+        y2={VB.h}
+        stroke={major ? INK.gridMajor : INK.grid}
+        strokeWidth={major ? 1 : 0.7}
+      />
+    );
+  }
+  for (let y = ORIGIN.y % step; y < VB.h; y += step) {
+    const units = Math.round((ORIGIN.y - y) / SCALE);
+    const major = units % 50 === 0;
+    lines.push(
+      <line
+        key={`h${y}`}
+        x1="0"
+        y1={y}
+        x2={VB.w}
+        y2={y}
+        stroke={major ? INK.gridMajor : INK.grid}
+        strokeWidth={major ? 1 : 0.7}
+      />
+    );
+  }
+
+  return (
+    <g>
+      {lines}
+      <line
+        x1="0"
+        y1={ORIGIN.y}
+        x2={VB.w}
+        y2={ORIGIN.y}
+        stroke={INK.axis}
+        strokeWidth="1.6"
+      />
+      <line
+        x1={ORIGIN.x}
+        y1="0"
+        x2={ORIGIN.x}
+        y2={VB.h}
+        stroke={INK.axis}
+        strokeWidth="1.6"
+      />
+      <text
+        x={VB.w - 14}
+        y={ORIGIN.y - 12}
+        fill={INK.axis}
+        fontSize="13"
+        fontFamily="'IBM Plex Mono', monospace"
+        textAnchor="end"
+      >
+        x
+      </text>
+      <text
+        x={ORIGIN.x + 12}
+        y="20"
+        fill={INK.axis}
+        fontSize="13"
+        fontFamily="'IBM Plex Mono', monospace"
+      >
+        y
+      </text>
+    </g>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  App                                                                */
+/* ------------------------------------------------------------------ */
+
+function VectorLab() {
+  const [vectors, setVectors] = useState([
+    { id: 1, mag: 60, angle: 25 },
+    { id: 2, mag: 45, angle: 105 },
+  ]);
+  const [mode, setMode] = useState("triangle");
+  const [snap, setSnap] = useState(true);
+  const [showSum, setShowSum] = useState(true);
+  const [dragId, setDragId] = useState(null);
+
+  const svgRef = useRef(null);
+  const dragRef = useRef(null);
+
+  /* ---- derived geometry ---- */
+  const geo = useMemo(() => {
+    const carts = vectors.map((v) => polar(v.mag, v.angle));
+    let acc = { x: 0, y: 0 };
+    const chained = carts.map((c) => {
+      const tail = { ...acc };
+      acc = { x: acc.x + c.x, y: acc.y + c.y };
+      return { tail, head: { ...acc } };
+    });
+    const sum = acc;
+    return {
+      carts,
+      chained,
+      sum,
+      sumMag: Math.hypot(sum.x, sum.y),
+      sumAngle: norm360(deg(Math.atan2(sum.y, sum.x))),
+    };
+  }, [vectors]);
+
+  const paraMode = mode === "parallelogram" && vectors.length === 2;
+  const tails =
+    mode === "triangle"
+      ? geo.chained.map((c) => c.tail)
+      : vectors.map(() => ({ x: 0, y: 0 }));
+
+  /* ---- dragging ---- */
+  const pointerToWorld = useCallback((e) => {
+    const rect = svgRef.current.getBoundingClientRect();
+    const sx = ((e.clientX - rect.left) / rect.width) * VB.w;
+    const sy = ((e.clientY - rect.top) / rect.height) * VB.h;
+    return { x: (sx - ORIGIN.x) / SCALE, y: (ORIGIN.y - sy) / SCALE };
+  }, []);
+
+  const startDrag = (e, id, tail) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { id, tail };
+    setDragId(id);
+  };
+
+  const moveDrag = (e) => {
+    if (!dragRef.current) return;
+    const { id, tail } = dragRef.current;
+    const p = pointerToWorld(e);
+    const dx = p.x - tail.x;
+    const dy = p.y - tail.y;
+
+    let mag = Math.min(MAX_MAG, Math.max(2, Math.hypot(dx, dy)));
+    let angle = norm360(deg(Math.atan2(dy, dx)));
+
+    if (snap || e.shiftKey) {
+      angle = norm360(Math.round(angle / 5) * 5);
+      mag = Math.round(mag);
+    }
+
+    setVectors((vs) =>
+      vs.map((v) => (v.id === id ? { ...v, mag, angle } : v))
+    );
+  };
+
+  const endDrag = () => {
+    dragRef.current = null;
+    setDragId(null);
+  };
+
+  /* ---- editing ---- */
+  const update = (id, key, raw) => {
+    let val = parseFloat(raw);
+    if (Number.isNaN(val)) val = 0;
+    if (key === "mag") val = Math.min(MAX_MAG, Math.max(0, val));
+    if (key === "angle") val = norm360(val);
+    setVectors((vs) => vs.map((v) => (v.id === id ? { ...v, [key]: val } : v)));
+  };
+
+  const addVector = () => {
+    if (vectors.length >= 4) return;
+    const id = Math.max(0, ...vectors.map((v) => v.id)) + 1;
+    setVectors((vs) => [...vs, { id, mag: 40, angle: norm360(200 + vs.length * 40) }]);
+    if (mode === "parallelogram") setMode("triangle");
+  };
+
+  const removeVector = (id) => {
+    if (vectors.length <= 2) return;
+    setVectors((vs) => vs.filter((v) => v.id !== id));
+  };
+
+  useEffect(() => {
+    if (vectors.length !== 2 && mode === "parallelogram") setMode("triangle");
+  }, [vectors.length, mode]);
+
+  /* ---- render helpers ---- */
+  const colorOf = (i) => VCOLORS[i % VCOLORS.length];
+
+  const MODES = [
+    { key: "triangle", label: "Triangle law", hint: "Head to tail" },
+    { key: "parallelogram", label: "Parallelogram", hint: "Shared tail" },
+    { key: "components", label: "Components", hint: "Resolve into x and y" },
+  ];
+
+  return (
+    <div style={S.root}>
+      <style>{CSS}</style>
+
+      <header style={S.header}>
+        <div>
+          <div style={S.eyebrow}>Statics · Vector fundamentals</div>
+          <h1 style={S.title}>Vector Bench</h1>
+        </div>
+        <p style={S.blurb}>
+          Build vectors from magnitude and direction. Add them head to tail, by
+          parallelogram, or split them into components. Drag any arrowhead.
+        </p>
+      </header>
+
+      <div style={S.body}>
+        {/* ---------------- canvas ---------------- */}
+        <section style={S.canvasWrap}>
+          <div style={S.modeBar}>
+            {MODES.map((m) => {
+              const disabled = m.key === "parallelogram" && vectors.length !== 2;
+              const active = mode === m.key;
+              return (
+                <button
+                  key={m.key}
+                  onClick={() => !disabled && setMode(m.key)}
+                  disabled={disabled}
+                  className="mode-btn"
+                  style={{
+                    ...S.modeBtn,
+                    background: active ? INK.text : "transparent",
+                    color: active ? INK.ground : disabled ? INK.faint : INK.dim,
+                    borderColor: active ? INK.text : INK.edge,
+                    cursor: disabled ? "not-allowed" : "pointer",
+                  }}
+                  title={disabled ? "Needs exactly two vectors" : m.hint}
+                >
+                  {m.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <svg
+            ref={svgRef}
+            viewBox={`0 0 ${VB.w} ${VB.h}`}
+            style={S.svg}
+            onPointerMove={moveDrag}
+            onPointerUp={endDrag}
+            onPointerCancel={endDrag}
+          >
+            <rect width={VB.w} height={VB.h} fill={INK.paper} />
+            <Grid />
+
+            {/* parallelogram construction */}
+            {paraMode && (
+              <g>
+                <Arrow
+                  from={geo.carts[0]}
+                  to={geo.sum}
+                  color={colorOf(1)}
+                  width={1.6}
+                  dashed
+                  opacity={0.5}
+                />
+                <Arrow
+                  from={geo.carts[1]}
+                  to={geo.sum}
+                  color={colorOf(0)}
+                  width={1.6}
+                  dashed
+                  opacity={0.5}
+                />
+              </g>
+            )}
+
+            {/* components */}
+            {mode === "components" &&
+              vectors.map((v, i) => {
+                const c = geo.carts[i];
+                return (
+                  <g key={`c${v.id}`} opacity="0.85">
+                    <Arrow
+                      from={{ x: 0, y: 0 }}
+                      to={{ x: c.x, y: 0 }}
+                      color={colorOf(i)}
+                      width={1.8}
+                      dashed
+                      opacity={0.65}
+                    />
+                    <Arrow
+                      from={{ x: c.x, y: 0 }}
+                      to={c}
+                      color={colorOf(i)}
+                      width={1.8}
+                      dashed
+                      opacity={0.65}
+                    />
+                  </g>
+                );
+              })}
+
+            {/* angle arcs */}
+            {mode !== "triangle" &&
+              vectors.map((v, i) => (
+                <AngleArc
+                  key={`a${v.id}`}
+                  angle={v.angle}
+                  radius={34 + i * 14}
+                  color={colorOf(i)}
+                />
+              ))}
+
+            {/* resultant */}
+            {showSum && geo.sumMag > 0.5 && (
+              <Arrow
+                from={{ x: 0, y: 0 }}
+                to={geo.sum}
+                color={INK.sum}
+                width={3.6}
+              />
+            )}
+
+            {/* the vectors */}
+            {vectors.map((v, i) => {
+              const tail = tails[i];
+              const head = {
+                x: tail.x + geo.carts[i].x,
+                y: tail.y + geo.carts[i].y,
+              };
+              const hs = toScreen(head);
+              const ts = toScreen(tail);
+              const lx = (hs.x + ts.x) / 2;
+              const ly = (hs.y + ts.y) / 2;
+
+              return (
+                <g key={v.id}>
+                  <Arrow from={tail} to={head} color={colorOf(i)} width={3} />
+                  <text
+                    x={lx + 14}
+                    y={ly - 10}
+                    fill={colorOf(i)}
+                    fontSize="16"
+                    fontWeight="600"
+                    fontFamily="'Space Grotesk', sans-serif"
+                  >
+                    {NAMES[i]}
+                  </text>
+                  <circle
+                    cx={hs.x}
+                    cy={hs.y}
+                    r={dragId === v.id ? 14 : 11}
+                    fill={colorOf(i)}
+                    fillOpacity={dragId === v.id ? 0.28 : 0.14}
+                    stroke={colorOf(i)}
+                    strokeWidth="1.5"
+                    style={{ cursor: "grab", touchAction: "none" }}
+                    onPointerDown={(e) => startDrag(e, v.id, tail)}
+                  />
+                </g>
+              );
+            })}
+
+            {/* resultant label */}
+            {showSum && geo.sumMag > 0.5 && (
+              <text
+                x={toScreen(geo.sum).x + 16}
+                y={toScreen(geo.sum).y + 6}
+                fill="#B87A02"
+                fontSize="15"
+                fontWeight="700"
+                fontFamily="'Space Grotesk', sans-serif"
+              >
+                R
+              </text>
+            )}
+
+            <circle cx={ORIGIN.x} cy={ORIGIN.y} r="4" fill={INK.axis} />
+          </svg>
+
+          <div style={S.canvasFoot}>
+            <label style={S.check}>
+              <input
+                type="checkbox"
+                checked={snap}
+                onChange={(e) => setSnap(e.target.checked)}
+              />
+              Snap to 5° steps
+            </label>
+            <label style={S.check}>
+              <input
+                type="checkbox"
+                checked={showSum}
+                onChange={(e) => setShowSum(e.target.checked)}
+              />
+              Show resultant
+            </label>
+            <span style={{ ...S.check, color: INK.faint }}>
+              1 grid square = 10 units
+            </span>
+          </div>
+        </section>
+
+        {/* ---------------- controls ---------------- */}
+        <aside style={S.side}>
+          {vectors.map((v, i) => {
+            const c = geo.carts[i];
+            return (
+              <div key={v.id} style={{ ...S.card, borderLeftColor: colorOf(i) }}>
+                <div style={S.cardHead}>
+                  <span style={{ ...S.vName, color: colorOf(i) }}>
+                    {NAMES[i]}
+                  </span>
+                  {vectors.length > 2 && (
+                    <button
+                      onClick={() => removeVector(v.id)}
+                      style={S.remove}
+                      className="mode-btn"
+                    >
+                      Remove
+                    </button>
+                  )}
+                </div>
+
+                <Field
+                  label="Magnitude"
+                  value={v.mag}
+                  min={0}
+                  max={MAX_MAG}
+                  step={1}
+                  unit="units"
+                  color={colorOf(i)}
+                  onChange={(val) => update(v.id, "mag", val)}
+                />
+                <Field
+                  label="Direction"
+                  value={v.angle}
+                  min={0}
+                  max={360}
+                  step={1}
+                  unit="deg"
+                  color={colorOf(i)}
+                  onChange={(val) => update(v.id, "angle", val)}
+                />
+
+                <div style={S.comp}>
+                  <span>
+                    x <b style={S.mono}>{fmt(c.x)}</b>
+                  </span>
+                  <span>
+                    y <b style={S.mono}>{fmt(c.y)}</b>
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          <button
+            onClick={addVector}
+            disabled={vectors.length >= 4}
+            className="mode-btn"
+            style={{
+              ...S.addBtn,
+              opacity: vectors.length >= 4 ? 0.4 : 1,
+              cursor: vectors.length >= 4 ? "not-allowed" : "pointer",
+            }}
+          >
+            Add a vector
+          </button>
+
+          <div style={S.result}>
+            <div style={S.resultLabel}>Resultant R</div>
+            <div style={S.resultRow}>
+              <span style={S.resultKey}>Magnitude</span>
+              <span style={S.resultVal}>{fmt(geo.sumMag, 2)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultKey}>Direction</span>
+              <span style={S.resultVal}>{fmt(geo.sumAngle, 1)}°</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultKey}>ΣFx</span>
+              <span style={S.resultVal}>{fmt(geo.sum.x, 2)}</span>
+            </div>
+            <div style={S.resultRow}>
+              <span style={S.resultKey}>ΣFy</span>
+              <span style={S.resultVal}>{fmt(geo.sum.y, 2)}</span>
+            </div>
+            <p style={S.formula}>
+              R = √(ΣFx² + ΣFy²) &nbsp;·&nbsp; θ = tan⁻¹(ΣFy / ΣFx)
+            </p>
+          </div>
+        </aside>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+
+function Field({ label, value, min, max, step, unit, color, onChange }) {
+  return (
+    <div style={S.field}>
+      <div style={S.fieldTop}>
+        <label style={S.fieldLabel}>{label}</label>
+        <div style={S.numWrap}>
+          <input
+            type="number"
+            value={Math.round(value * 10) / 10}
+            min={min}
+            max={max}
+            step={step}
+            onChange={(e) => onChange(e.target.value)}
+            style={S.num}
+            className="num-input"
+          />
+          <span style={S.unit}>{unit}</span>
+        </div>
+      </div>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        style={{ ...S.range, accentColor: color }}
+      />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Styles                                                             */
+/* ------------------------------------------------------------------ */
+
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
+* { box-sizing: border-box; }
+.mode-btn:focus-visible, .num-input:focus-visible, input:focus-visible {
+  outline: 2px solid ${INK.sum};
+  outline-offset: 2px;
+}
+input[type=number]::-webkit-inner-spin-button { opacity: 0.4; }
+@media (prefers-reduced-motion: no-preference) {
+  .mode-btn { transition: background 140ms ease, color 140ms ease, border-color 140ms ease; }
+}
+`;
+
+const mono = "'IBM Plex Mono', ui-monospace, monospace";
+const sans = "'Space Grotesk', system-ui, sans-serif";
+
+const S = {
+  root: {
+    minHeight: "100%",
+    background: INK.ground,
+    color: INK.text,
+    fontFamily: sans,
+    padding: "28px 24px 40px",
+  },
+  header: {
+    maxWidth: 1180,
+    margin: "0 auto 24px",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 20,
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+  },
+  eyebrow: {
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: INK.faint,
+    marginBottom: 6,
+  },
+  title: {
+    margin: 0,
+    fontSize: 34,
+    fontWeight: 700,
+    letterSpacing: "-0.02em",
+  },
+  blurb: {
+    margin: 0,
+    maxWidth: 430,
+    fontSize: 14,
+    lineHeight: 1.55,
+    color: INK.dim,
+  },
+  body: {
+    maxWidth: 1180,
+    margin: "0 auto",
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 20,
+    alignItems: "flex-start",
+  },
+  canvasWrap: { flex: "1 1 560px", minWidth: 320 },
+  modeBar: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  modeBtn: {
+    fontFamily: sans,
+    fontSize: 13,
+    fontWeight: 500,
+    padding: "8px 15px",
+    borderRadius: 999,
+    border: "1px solid",
+  },
+  svg: {
+    width: "100%",
+    height: "auto",
+    display: "block",
+    borderRadius: 10,
+    border: `1px solid ${INK.edge}`,
+    touchAction: "none",
+  },
+  canvasFoot: {
+    display: "flex",
+    flexWrap: "wrap",
+    gap: 18,
+    marginTop: 12,
+    fontSize: 13,
+    color: INK.dim,
+  },
+  check: { display: "flex", alignItems: "center", gap: 7, cursor: "pointer" },
+
+  side: { flex: "1 1 300px", minWidth: 280, display: "grid", gap: 12 },
+  card: {
+    background: INK.panel,
+    border: `1px solid ${INK.edge}`,
+    borderLeft: "3px solid",
+    borderRadius: 8,
+    padding: "14px 16px 16px",
+  },
+  cardHead: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  vName: { fontSize: 20, fontWeight: 700, letterSpacing: "-0.01em" },
+  remove: {
+    background: "transparent",
+    border: `1px solid ${INK.edge}`,
+    color: INK.faint,
+    fontFamily: sans,
+    fontSize: 11,
+    padding: "4px 10px",
+    borderRadius: 999,
+    cursor: "pointer",
+  },
+  field: { marginBottom: 12 },
+  fieldTop: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 6,
+  },
+  fieldLabel: { fontSize: 12, color: INK.dim, letterSpacing: "0.02em" },
+  numWrap: { display: "flex", alignItems: "baseline", gap: 5 },
+  num: {
+    width: 64,
+    background: INK.ground,
+    border: `1px solid ${INK.edge}`,
+    borderRadius: 5,
+    color: INK.text,
+    fontFamily: mono,
+    fontSize: 13,
+    padding: "4px 7px",
+    textAlign: "right",
+  },
+  unit: { fontFamily: mono, fontSize: 10, color: INK.faint, width: 30 },
+  range: { width: "100%", cursor: "pointer" },
+  comp: {
+    display: "flex",
+    gap: 18,
+    paddingTop: 10,
+    borderTop: `1px solid ${INK.edge}`,
+    fontSize: 12,
+    color: INK.dim,
+  },
+  mono: { fontFamily: mono, color: INK.text, fontWeight: 500 },
+
+  addBtn: {
+    background: "transparent",
+    border: `1px dashed ${INK.edge}`,
+    color: INK.dim,
+    fontFamily: sans,
+    fontSize: 13,
+    padding: "11px 0",
+    borderRadius: 8,
+  },
+  result: {
+    background: INK.panel,
+    border: `1px solid ${INK.sum}44`,
+    borderRadius: 8,
+    padding: "14px 16px 16px",
+  },
+  resultLabel: {
+    fontFamily: mono,
+    fontSize: 11,
+    letterSpacing: "0.14em",
+    textTransform: "uppercase",
+    color: INK.sum,
+    marginBottom: 10,
+  },
+  resultRow: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "baseline",
+    padding: "5px 0",
+    borderBottom: `1px solid ${INK.edge}`,
+  },
+  resultKey: { fontSize: 13, color: INK.dim },
+  resultVal: { fontFamily: mono, fontSize: 15, fontWeight: 500 },
+  formula: {
+    margin: "12px 0 0",
+    fontFamily: mono,
+    fontSize: 11,
+    color: INK.faint,
+    lineHeight: 1.6,
+  },
+};
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<VectorLab />);
+</script>
+</body>
+</html>
