@@ -566,7 +566,13 @@ function updateScales(){
   let fmax=0,vmax=0,amax=0;
   for(const p of live()){
     fmax=Math.max(fmax, mag(p.weight()), mag(p.tension()));
-    vmax=Math.max(vmax, mag(p.vel()));
+    
+    // Calculate the constant maximum theoretical velocity for the current swing
+    // instead of scaling based on the instantaneous velocity
+    const amplitude = Math.max(Math.abs(p.theta0), p.amp); 
+    const maxVel = Math.sqrt(2 * world.g * p.L * (1 - Math.cos(amplitude)));
+    vmax=Math.max(vmax, maxVel);
+    
     amax=Math.max(amax, mag(p.acc()), world.g);
   }
   const ease=(cur,want)=>cur+(want-cur)*0.08;
