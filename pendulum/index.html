@@ -686,7 +686,8 @@ function drawPendulum(p){
   }
   if(world.showV){
     const s=vscale.vel, v=p.vel();
-    parallelogram(bob, proj(v,e1,s), proj(v,e2,s), CSS.vel, null);
+    // Draw only the true velocity vector (strictly tangential) without components
+    arrow(bob, v.x*s, v.y*s, CSS.vel, {width: 2.6});
   }
   if(world.showA){
     const s=vscale.acc, a=p.acc();
